@@ -35,8 +35,8 @@ app.use(express.json()); // Habilita o parsing de JSON no corpo das requisiçõe
 app.use(express.urlencoded({ extended: true })); // Habilita o parsing de URL-encoded no corpo das requisições
 
 // Serve ficheiros estáticos da pasta 'frontend'
-app.use(express.static(FRONTEND_DIR));
-app.use('/static', express.static(STATIC_FILES_DIR));
+~// app.use(express.static(FRONTEND_DIR));
+// app.use('/static', express.static(STATIC_FILES_DIR));
 app.use('/uploads', express.static(UPLOAD_FOLDER)); // Para servir comprovativos de upload
 
 // ==============================================================================
