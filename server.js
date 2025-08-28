@@ -112,20 +112,20 @@ const authenticateToken = (req, res, next) => {
 // ==============================================================================
 
 // Rota para o ficheiro HTML raiz (Login)
-app.get('/', (req, res) => {
-    res.sendFile(path.join(FRONTEND_DIR, 'Login.html'));
-});
+// app.get('/', (req, res) => {
+  //  res.sendFile(path.join(FRONTEND_DIR, 'Login.html'));
+// });
 
 // Rota para outros ficheiros HTML (por exemplo, Pagina inicial.html)
-app.get('/:html_file.html', (req, res) => {
-    const filePath = path.join(FRONTEND_DIR, `${req.params.html_file}.html`);
-    res.sendFile(filePath, (err) => {
-        if (err) {
-            console.error(`Erro ao servir ${filePath}:`, err);
-            res.status(404).send('Ficheiro não encontrado.');
-        }
-    });
-});
+// app.get('/:html_file.html', (req, res) => {
+  //  const filePath = path.join(FRONTEND_DIR, `${req.params.html_file}.html`);
+   // res.sendFile(filePath, (err) => {
+      //  if (err) {
+        //    console.error(`Erro ao servir ${filePath}:`, err);
+        //    res.status(404).send('Ficheiro não encontrado.');
+     //   }
+  //  });
+// });
 
 
 app.post('/api/register', async (req, res) => {
