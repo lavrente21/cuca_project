@@ -1,0 +1,11 @@
+version: "3.9"
+
+services:
+  backend:
+    build: ./backend
+    container_name: cuca_backend
+    restart: always
+    ports:
+      - "5000:5000"
+    env_file:
+      - ./backend/.env
