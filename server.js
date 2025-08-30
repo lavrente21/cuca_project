@@ -30,9 +30,13 @@ if (!require('fs').existsSync(UPLOAD_FOLDER)) {
 // ==============================================================================
 // MIDDLEWARE
 // ==============================================================================
-app.use(cors()); // Permite requisições de diferentes origens (frontend)
-app.use(express.json()); // Habilita o parsing de JSON no corpo das requisições
-app.use(express.urlencoded({ extended: true })); // Habilita o parsing de URL-encoded no corpo das requisições
+app.use(cors({
+  origin: "https://tendaofox222.netlify.app", // 🔹 mete o teu domínio Netlify correto
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  credentials: true
+}));
+
 
 // Serve ficheiros estáticos da pasta 'frontend'
 ~// app.use(express.static(FRONTEND_DIR));
@@ -43,14 +47,15 @@ app.use('/uploads', express.static(UPLOAD_FOLDER)); // Para servir comprovativos
 // CONFIGURAÇÃO DO MYSQL
 // ==============================================================================
 const pool = mysql.createPool({
-    host: process.env.DB_HOST,
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    database: process.env.DB_DATABASE,
-    waitForConnections: true,
-    connectionLimit: 10,
-    queueLimit: 0
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_DATABASE,
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0
 });
+
 
 // ==============================================================================
 // CONFIGURAÇÃO DE UPLOAD DE FICHEIROS (MULTER)
@@ -530,4 +535,5 @@ app.get('/api/investments/history', authenticateToken, async (req, res) => {
         res.status(500).json({ error: 'Erro interno do servidor ao carregar histórico de investimentos.', message: err.message });
     }
 });
+
 
