@@ -31,6 +31,15 @@ if (!require('fs').existsSync(UPLOAD_FOLDER)) {
 // MIDDLEWARE
 // ==============================================================================
 // Responder preflight de CORS
+// Middleware para CORS (já com Netlify autorizado)
+app.use(cors({
+  origin: "https://tendaofox222.netlify.app", // 👉 o teu frontend no Netlify
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  credentials: true
+}));
+
+// Resposta para pedidos preflight (OPTIONS)
 app.options("*", cors({
   origin: "https://tendaofox222.netlify.app",
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
@@ -537,6 +546,7 @@ app.get('/api/investments/history', authenticateToken, async (req, res) => {
         res.status(500).json({ error: 'Erro interno do servidor ao carregar histórico de investimentos.', message: err.message });
     }
 });
+
 
 
 
