@@ -30,43 +30,27 @@ if (!require('fs').existsSync(UPLOAD_FOLDER)) {
 // ==============================================================================
 // MIDDLEWARE
 // ==============================================================================
-// Responder preflight de CORS
-// Middleware para CORS (já com Netlify autorizado)
-app.use(cors({
-  origin: "https://tendaofox222.netlify.app", // 👉 o teu frontend no Netlify
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
-  credentials: true
-}));
-
-// Resposta para pedidos preflight (OPTIONS)
-app.options("*", cors({
-  origin: "https://tendaofox222.netlify.app",
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
-  credentials: true
-}));
-
-
+app.use(cors()); // Permite requisições de diferentes origens (frontend)
+app.use(express.json()); // Habilita o parsing de JSON no corpo das requisições
+app.use(express.urlencoded({ extended: true })); // Habilita o parsing de URL-encoded no corpo das requisições
 
 // Serve ficheiros estáticos da pasta 'frontend'
-~// app.use(express.static(FRONTEND_DIR));
-// app.use('/static', express.static(STATIC_FILES_DIR));
+app.use(express.static(FRONTEND_DIR));
+app.use('/static', express.static(STATIC_FILES_DIR));
 app.use('/uploads', express.static(UPLOAD_FOLDER)); // Para servir comprovativos de upload
 
 // ==============================================================================
 // CONFIGURAÇÃO DO MYSQL
 // ==============================================================================
 const pool = mysql.createPool({
-  host: process.env.DB_HOST,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_DATABASE,
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0
+    host: process.env.DB_HOST,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_DATABASE,
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0
 });
-
 
 // ==============================================================================
 // CONFIGURAÇÃO DE UPLOAD DE FICHEIROS (MULTER)
@@ -128,20 +112,20 @@ const authenticateToken = (req, res, next) => {
 // ==============================================================================
 
 // Rota para o ficheiro HTML raiz (Login)
-// app.get('/', (req, res) => {
-  //  res.sendFile(path.join(FRONTEND_DIR, 'Login.html'));
-// });
+app.get('/', (req, res) => {
+    res.sendFile(path.join(FRONTEND_DIR, 'Login.html'));
+});
 
 // Rota para outros ficheiros HTML (por exemplo, Pagina inicial.html)
-// app.get('/:html_file.html', (req, res) => {
-  //  const filePath = path.join(FRONTEND_DIR, `${req.params.html_file}.html`);
-   // res.sendFile(filePath, (err) => {
-      //  if (err) {
-        //    console.error(`Erro ao servir ${filePath}:`, err);
-        //    res.status(404).send('Ficheiro não encontrado.');
-     //   }
-  //  });
-// });
+app.get('/:html_file.html', (req, res) => {
+    const filePath = path.join(FRONTEND_DIR, `${req.params.html_file}.html`);
+    res.sendFile(filePath, (err) => {
+        if (err) {
+            console.error(`Erro ao servir ${filePath}:`, err);
+            res.status(404).send('Ficheiro não encontrado.');
+        }
+    });
+});
 
 
 app.post('/api/register', async (req, res) => {
@@ -546,7 +530,3 @@ app.get('/api/investments/history', authenticateToken, async (req, res) => {
         res.status(500).json({ error: 'Erro interno do servidor ao carregar histórico de investimentos.', message: err.message });
     }
 });
-
-
-
-
