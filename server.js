@@ -32,11 +32,27 @@ if (!require('fs').existsSync(UPLOAD_FOLDER)) {
 // ==============================================================================
 
 
-app.use(cors({
-  origin: ["http://127.0.0.1:5500", "http://localhost:5500", "https://cucaproject-cucaproject1.up.railway.app"], // frontends permitidos
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"]
-}));
+const allowedOrigins = [
+    "http://127.0.0.1:5500",
+    "http://localhost:5500",
+    "https://cucaproject-cucaproject1.up.railway.app"
+  ];
+  
+  app.use(cors({
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("CORS não permitido para esta origem: " + origin));
+      }
+    },
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"]
+  }));
+  
+  // 🔥 importante: permitir preflight em todas as rotas
+  app.options("*", cors());
+  
  // Permite requisições de diferentes origens (frontend)
 app.use(express.json()); // Habilita o parsing de JSON no corpo das requisições
 app.use(express.urlencoded({ extended: true })); // Habilita o parsing de URL-encoded no corpo das requisições
