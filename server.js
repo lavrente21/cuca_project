@@ -468,11 +468,12 @@ app.listen(PORT, () => {
     console.log(`- POST /api/withdraw`);
     console.log(`- POST /api/link-account`);
     console.log(`- GET /api/withdrawals/history`);
+    console.log(`- GET /api/deposits/history`);
+console.log(`- GET /api/investments/history`);
+
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
-app.post("/api/register", async (req, res) => {
-   // código de registro
-});
+
 // Adicione esta rota em algum lugar com as outras rotas GET, por exemplo,
 // após a rota '/api/withdrawals/history'.
 
