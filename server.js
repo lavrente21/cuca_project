@@ -456,8 +456,8 @@ app.get('/api/withdrawals/history', authenticateToken, async (req, res) => {
 // ==============================================================================
 // INICIAR O SERVIDOR
 // ==============================================================================
-app.listen(PORT, () => {
-    console.log(`Servidor Node.js a correr em http://localhost:${PORT}`);
+app.listen(PORT, "0.0.0.0", () => {
+    console.log(`cucaproject-cucaproject1.up.railway.app ${PORT}`);
     console.log('Rotas disponíveis:');
     console.log(`- POST /api/register`);
     console.log(`- POST /api/login`);
