@@ -30,7 +30,7 @@ if (!require('fs').existsSync(UPLOAD_FOLDER)) {
 // ==============================================================================
 // MIDDLEWARE
 // ==============================================================================
-const cors = require("cors");
+
 
 app.use(cors({
   origin: ["http://127.0.0.1:5500", "http://localhost:5500", "https://cucaproject-cucaproject1.up.railway.app"], // frontends permitidos
@@ -351,7 +351,7 @@ app.post('/api/withdraw', authenticateToken, async (req, res) => {
             return res.status(400).json({ error: 'Saldo de saque insuficiente.' });
         }
 
-        const fee = amount * (process.env.WITHDRAW_FEE_PERCENTAGE || 0.05);
+        const fee = amount * (process.env.WITHDRAW_FEE_PERCENTAGE || 0.00);
         const actualAmount = amount - fee;
 
         connection = await pool.getConnection(); // ✅ só inicializa aqui
@@ -460,11 +460,13 @@ app.get('/api/withdrawals/history', authenticateToken, async (req, res) => {
     }
 });
 
+app.options("*", cors());
+
+
 // ==============================================================================
 // INICIAR O SERVIDOR
 // ==============================================================================
-app.listen(PORT, "0.0.0.0", () => {
-    const PORT = process.env.PORT || 5000;
+
     app.listen(PORT, "0.0.0.0", () => {
       console.log(`Servidor Node.js a correr em ${process.env.RAILWAY_STATIC_URL || "http://localhost"}:${PORT}`);
     });
@@ -479,11 +481,11 @@ app.listen(PORT, "0.0.0.0", () => {
     console.log(`- POST /api/withdraw`);
     console.log(`- POST /api/link-account`);
     console.log(`- GET /api/withdrawals/history`);
-    console.log(`- GET /api/deposits/history`);
+    console.log(`- GET /api/deposits/history`)
 console.log(`- GET /api/investments/history`);
 
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
-});
+
 
 // Adicione esta rota em algum lugar com as outras rotas GET, por exemplo,
 // após a rota '/api/withdrawals/history'.
