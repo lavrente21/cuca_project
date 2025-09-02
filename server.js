@@ -12,7 +12,11 @@ const path = require('path');
 const { v4: uuidv4 } = require('uuid'); // Para gerar UUIDs
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT;
+
+if (!PORT) {
+    throw new Error("A variável de ambiente PORT não está definida.");
+  }
 
 // ==============================================================================
 // CONFIGURAÇÃO DE CAMINHOS
@@ -490,10 +494,9 @@ app.get('/api/withdrawals/history', authenticateToken, async (req, res) => {
 // INICIAR O SERVIDOR
 // ==============================================================================
 
-    app.listen(PORT, "0.0.0.0", () => {
-      console.log(`Servidor Node.js a correr em ${process.env.RAILWAY_STATIC_URL || "http://localhost"}:${PORT}`);
-    });
-    
+app.listen(PORT, "0.0.0.0", () => {
+    console.log(`🚀 Servidor rodando na porta ${PORT}`);
+  });
     console.log('Rotas disponíveis:');
     console.log(`- POST /api/register`);
     console.log(`- POST /api/login`);
