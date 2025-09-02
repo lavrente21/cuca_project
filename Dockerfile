@@ -11,8 +11,8 @@ RUN npm install --production
 # Copia o restante do código
 COPY . .
 
-# Expor a porta dinâmica do Railway
-EXPOSE $PORT
+# Expor a porta definida (Railway ou local)
+EXPOSE ${PORT}
 
 # Iniciar o servidor
 CMD ["npm", "start"]
