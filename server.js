@@ -35,7 +35,7 @@ if (!require('fs').existsSync(UPLOAD_FOLDER)) {
 const allowedOrigins = [
     "http://127.0.0.1:5500",
     "http://localhost:5500",
-    "https://cucaproject-cucaproject1.up.railway.app"
+    process.env.RAILWAY_STATIC_URL || "https://cucaproject-cucaproject1.up.railway.app"
   ];
   
   app.use(cors({
@@ -43,6 +43,7 @@ const allowedOrigins = [
       if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
+        console.warn("🚨 Bloqueado por CORS:", origin);
         callback(new Error("CORS não permitido para esta origem: " + origin));
       }
     },
@@ -50,8 +51,14 @@ const allowedOrigins = [
     allowedHeaders: ["Content-Type", "Authorization"]
   }));
   
-  // 🔥 importante: permitir preflight em todas as rotas
-  app.options("*", cors());
+  // 🔥 Garantir que todos os OPTIONS sejam tratados
+  app.options("*", (req, res) => {
+    res.header("Access-Control-Allow-Origin", req.headers.origin || "*");
+    res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    return res.sendStatus(200);
+  });
+  
   
  // Permite requisições de diferentes origens (frontend)
 app.use(express.json()); // Habilita o parsing de JSON no corpo das requisições
@@ -476,7 +483,7 @@ app.get('/api/withdrawals/history', authenticateToken, async (req, res) => {
     }
 });
 
-app.options("*", cors());
+
 
 
 // ==============================================================================
@@ -531,6 +538,10 @@ app.get('/api/deposits/history', authenticateToken, async (req, res) => {
     }
 });
 
+app.use((req, res) => {
+    res.status(404).json({ error: "Endpoint não encontrado." });
+  });
+  
 // Não se esqueça de adicionar esta nova rota à lista de rotas disponíveis no `app.listen`
 // console.log(`- GET /api/deposits/history`);
 
