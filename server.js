@@ -1,10 +1,10 @@
 // backend/server.js
-// Este ficheiro implementa o backend da aplicação Cuca usando Node.js, Express.js e MySQL.
+// Este ficheiro implementa o backend da aplicação Cuca usando Node.js, Express.js e PostgreSQL.
 
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const mysql = require('mysql2/promise');
+const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const multer = require('multer');
@@ -37,19 +37,17 @@ app.use('/uploads', express.static(UPLOAD_FOLDER));
 app.use(express.static(path.join(FRONTEND_DIR, 'public'))); // Adicione esta linha se tiver uma pasta 'public'
 
 // ==============================================================================
-// CONFIGURAÇÃO DO MYSQL
+// CONFIGURAÇÃO DO POSTGRES
 // ==============================================================================
-const pool = mysql.createPool({
-    host: process.env.MYSQLHOST,
-    user: process.env.MYSQLUSER,
-    password: process.env.MYSQLPASSWORD, // <-- aqui estava errado
-    database: process.env.MYSQLDATABASE,
-    port: process.env.MYSQLPORT,
-    waitForConnections: true,
-    connectionLimit: 25,
-    queueLimit: 0
+const pool = new Pool({
+    host: process.env.PGHOST,
+    user: process.env.PGUSER,
+    password: process.env.PGPASSWORD,
+    database: process.env.PGDATABASE,
+    port: process.env.PGPORT,
+    max: 25,
+    ssl: { rejectUnauthorized: false } // Render exige SSL
 });
-
 
 // ==============================================================================
 // CONFIGURAÇÃO DE UPLOAD DE FICHEIROS (MULTER)
@@ -72,11 +70,12 @@ const upload = multer({
 // ==============================================================================
 async function generateUserIdCode() {
     let code;
-    let [rows] = [];
+    let rows;
     do {
         code = String(Math.floor(10000 + Math.random() * 90000));
-        [rows] = await pool.query("SELECT COUNT(*) AS count FROM users WHERE user_id_code = ?", [code]);
-    } while (rows[0].count > 0);
+        const res = await pool.query("SELECT COUNT(*) AS count FROM users WHERE user_id_code = $1", [code]);
+        rows = res.rows;
+    } while (parseInt(rows[0].count, 10) > 0);
     return code;
 }
 
@@ -105,8 +104,8 @@ app.post('/api/register', async (req, res) => {
         return res.status(400).json({ message: 'Por favor, preencha todos os campos obrigatórios.' });
     }
     try {
-        const [existingUser] = await pool.query("SELECT id FROM users WHERE username = ?", [username]);
-        if (existingUser.length > 0) {
+        const existing = await pool.query("SELECT id FROM users WHERE username = $1", [username]);
+        if (existing.rows.length > 0) {
             return res.status(409).json({ message: 'Nome de utilizador já existe.' });
         }
         const userId = uuidv4();
@@ -116,7 +115,7 @@ app.post('/api/register', async (req, res) => {
         const sql = `
             INSERT INTO users
             (id, username, password_hash, transaction_password_hash, balance, balance_recharge, balance_withdraw, user_id_code)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         `;
         await pool.query(sql, [userId, username, passwordHash, transactionPasswordHash, 0.0, 0.0, 0.0, userIdCode]);
         console.log(`Utilizador registado: ${username} com ID: ${userId}`);
@@ -133,8 +132,8 @@ app.post('/api/login', async (req, res) => {
         return res.status(400).json({ message: 'Por favor, preencha todos os campos.' });
     }
     try {
-        const [rows] = await pool.query("SELECT id, password_hash, user_id_code FROM users WHERE username = ?", [username]);
-        const userFound = rows[0];
+        const result = await pool.query("SELECT id, password_hash, user_id_code FROM users WHERE username = $1", [username]);
+        const userFound = result.rows[0];
         if (!userFound || !(await bcrypt.compare(password, userFound.password_hash))) {
             return res.status(401).json({ message: 'Nome de utilizador ou senha inválidos.' });
         }
@@ -160,11 +159,11 @@ app.post('/api/logout', authenticateToken, async (req, res) => {
 
 app.get('/api/dashboard', authenticateToken, async (req, res) => {
     try {
-        const [rows] = await pool.query(
-            "SELECT username, user_id_code, balance, balance_recharge, balance_withdraw, linked_account_bank_name, linked_account_number, linked_account_holder FROM users WHERE id = ?",
+        const result = await pool.query(
+            "SELECT username, user_id_code, balance, balance_recharge, balance_withdraw, linked_account_bank_name, linked_account_number, linked_account_holder FROM users WHERE id = $1",
             [req.userId]
         );
-        const userData = rows[0];
+        const userData = result.rows[0];
         if (!userData) {
             return res.status(404).json({ message: 'Utilizador não encontrado.' });
         }
@@ -188,11 +187,11 @@ app.get('/api/dashboard', authenticateToken, async (req, res) => {
 
 app.get('/api/linked_account', authenticateToken, async (req, res) => {
     try {
-        const [rows] = await pool.query(
-            "SELECT linked_account_bank_name, linked_account_number, linked_account_holder FROM users WHERE id = ?",
+        const result = await pool.query(
+            "SELECT linked_account_bank_name, linked_account_number, linked_account_holder FROM users WHERE id = $1",
             [req.userId]
         );
-        const accountData = rows[0];
+        const accountData = result.rows[0];
         if (!accountData || !accountData.linked_account_number) {
             return res.status(404).json({ message: 'Nenhuma conta vinculada encontrada.' });
         }
@@ -210,7 +209,7 @@ app.get('/api/linked_account', authenticateToken, async (req, res) => {
 app.post('/api/deposit', authenticateToken, upload.single('file'), async (req, res) => {
     const { amount: amountStr } = req.body;
     const file = req.file;
-    let connection;
+    let client;
     if (!amountStr) {
         return res.status(400).json({ error: 'Valor do depósito é obrigatório.' });
     }
@@ -225,31 +224,33 @@ app.post('/api/deposit', authenticateToken, upload.single('file'), async (req, r
     const filepath = path.join(UPLOAD_FOLDER, filename);
     try {
         await fs.promises.rename(file.path, filepath);
-        connection = await pool.getConnection();
-        await connection.beginTransaction();
+        client = await pool.connect();
+        await client.query('BEGIN');
         const depositId = uuidv4();
         const sqlDeposit = `
             INSERT INTO deposits (id, user_id, amount, status, timestamp, receipt_filename)
-            VALUES (?, ?, ?, ?, ?, ?)
+            VALUES ($1, $2, $3, $4, $5, $6)
         `;
-        await connection.query(sqlDeposit, [depositId, req.userId, amount, 'Pendente', new Date(), filename]);
-        await connection.commit();
+        await client.query(sqlDeposit, [depositId, req.userId, amount, 'Pendente', new Date(), filename]);
+        await client.query('COMMIT');
         console.log(`Depósito de Kz ${amount} registado para o utilizador ${req.userId}, aguardando aprovação do admin.`);
         res.status(200).json({
             message: 'Depósito enviado para análise do administrador. O saldo será atualizado após aprovação.'
         });
     } catch (err) {
-        if (connection) await connection.rollback();
+        if (client) {
+            try { await client.query('ROLLBACK'); } catch (e) { /* ignore */ }
+        }
         console.error('Erro no depósito:', err);
         res.status(500).json({ error: 'Erro interno do servidor ao processar depósito.', message: err.message });
     } finally {
-        if (connection) connection.release();
+        if (client) client.release();
     }
 });
 
 app.post('/api/withdraw', authenticateToken, async (req, res) => {
     const { withdrawAmount: amountStr, transactionPassword } = req.body;
-    let connection;
+    let client;
     if (!amountStr || !transactionPassword) {
         return res.status(400).json({ error: 'Todos os campos são obrigatórios para o saque.' });
     }
@@ -258,11 +259,11 @@ app.post('/api/withdraw', authenticateToken, async (req, res) => {
         return res.status(400).json({ error: 'Valor de saque inválido.' });
     }
     try {
-        const [userRows] = await pool.query(
-            "SELECT transaction_password_hash, balance_withdraw, balance, linked_account_number FROM users WHERE id = ?",
+        const userRes = await pool.query(
+            "SELECT transaction_password_hash, balance_withdraw, balance, linked_account_number FROM users WHERE id = $1",
             [req.userId]
         );
-        const user = userRows[0];
+        const user = userRes.rows[0];
         if (!user) {
             return res.status(404).json({ error: 'Utilizador não encontrado.' });
         }
@@ -272,23 +273,26 @@ app.post('/api/withdraw', authenticateToken, async (req, res) => {
         if (!user.linked_account_number) {
             return res.status(400).json({ error: 'Nenhuma conta vinculada para saque. Por favor, vincule uma conta primeiro.' });
         }
-        if (amount > user.balance_withdraw) {
+        if (amount > parseFloat(user.balance_withdraw)) {
             return res.status(400).json({ error: 'Saldo de saque insuficiente.' });
         }
-        const fee = amount * (process.env.WITHDRAW_FEE_PERCENTAGE || 0.05);
+        const fee = amount * (parseFloat(process.env.WITHDRAW_FEE_PERCENTAGE || '0.05'));
         const actualAmount = amount - fee;
-        connection = await pool.getConnection();
-        await connection.beginTransaction();
-        await connection.query(
-            "UPDATE users SET balance_withdraw = balance_withdraw - ?, balance = balance - ? WHERE id = ?",
+
+        client = await pool.connect();
+        await client.query('BEGIN');
+
+        await client.query(
+            "UPDATE users SET balance_withdraw = balance_withdraw - $1, balance = balance - $2 WHERE id = $3",
             [amount, amount, req.userId]
         );
+
         const withdrawalId = uuidv4();
         const sqlWithdrawal = `
             INSERT INTO withdrawals (id, user_id, requested_amount, fee, actual_amount, status, timestamp, account_number_used)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         `;
-        await connection.query(sqlWithdrawal, [
+        await client.query(sqlWithdrawal, [
             withdrawalId,
             req.userId,
             amount,
@@ -298,12 +302,14 @@ app.post('/api/withdraw', authenticateToken, async (req, res) => {
             new Date(),
             user.linked_account_number
         ]);
-        await connection.commit();
-        const [updatedBalanceRows] = await pool.query(
-            "SELECT balance_withdraw FROM users WHERE id = ?",
+
+        await client.query('COMMIT');
+
+        const updatedBalanceRes = await pool.query(
+            "SELECT balance_withdraw FROM users WHERE id = $1",
             [req.userId]
         );
-        const updatedBalanceWithdraw = updatedBalanceRows[0].balance_withdraw;
+        const updatedBalanceWithdraw = updatedBalanceRes.rows[0].balance_withdraw;
         console.log(`Saque de Kz ${amount} solicitado pelo utilizador ${req.userId}. Saldo Saque Restante: ${updatedBalanceWithdraw}`);
         res.status(200).json({
             message: 'Pedido de saque registado com sucesso!',
@@ -311,11 +317,13 @@ app.post('/api/withdraw', authenticateToken, async (req, res) => {
             actual_amount_received: actualAmount
         });
     } catch (err) {
-        if (connection) await connection.rollback();
+        if (client) {
+            try { await client.query('ROLLBACK'); } catch (e) { /* ignore */ }
+        }
         console.error('Erro no saque:', err);
         res.status(500).json({ error: 'Erro interno do servidor ao processar saque.', message: err.message });
     } finally {
-        if (connection) connection.release();
+        if (client) client.release();
     }
 });
 
@@ -325,8 +333,8 @@ app.post('/api/link-account', authenticateToken, async (req, res) => {
         return res.status(400).json({ error: 'Todos os campos da conta são obrigatórios.' });
     }
     try {
-        const [userRows] = await pool.query("SELECT transaction_password_hash FROM users WHERE id = ?", [req.userId]);
-        const userInfo = userRows[0];
+        const userRes = await pool.query("SELECT transaction_password_hash FROM users WHERE id = $1", [req.userId]);
+        const userInfo = userRes.rows[0];
         if (!userInfo) {
             return res.status(404).json({ error: 'Utilizador não encontrado.' });
         }
@@ -335,10 +343,10 @@ app.post('/api/link-account', authenticateToken, async (req, res) => {
         }
         const sql = `
             UPDATE users SET
-            linked_account_bank_name = ?,
-            linked_account_number = ?,
-            linked_account_holder = ?
-            WHERE id = ?
+            linked_account_bank_name = $1,
+            linked_account_number = $2,
+            linked_account_holder = $3
+            WHERE id = $4
         `;
         await pool.query(sql, [bankName, accountNumber, accountHolder, req.userId]);
         console.log(`Conta vinculada para o utilizador ${req.userId}: ${bankName} - ${accountNumber}`);
@@ -351,16 +359,16 @@ app.post('/api/link-account', authenticateToken, async (req, res) => {
 
 app.get('/api/withdrawals/history', authenticateToken, async (req, res) => {
     try {
-        const [rows] = await pool.query(
-            "SELECT requested_amount, fee, actual_amount, status, timestamp, account_number_used FROM withdrawals WHERE user_id = ? ORDER BY timestamp DESC",
+        const result = await pool.query(
+            "SELECT requested_amount, fee, actual_amount, status, timestamp, account_number_used FROM withdrawals WHERE user_id = $1 ORDER BY timestamp DESC",
             [req.userId]
         );
-        const history = rows.map(item => ({
+        const history = result.rows.map(item => ({
             requested_amount: parseFloat(item.requested_amount),
             fee: parseFloat(item.fee),
             actual_amount: parseFloat(item.actual_amount),
             status: item.status,
-            timestamp: item.timestamp.toISOString(),
+            timestamp: item.timestamp ? item.timestamp.toISOString() : null,
             account_number_used: item.account_number_used
         }));
         res.status(200).json({ history: history });
@@ -372,15 +380,15 @@ app.get('/api/withdrawals/history', authenticateToken, async (req, res) => {
 
 app.get('/api/deposits/history', authenticateToken, async (req, res) => {
     try {
-        const [rows] = await pool.query(
-            "SELECT id, amount, status, timestamp, receipt_filename FROM deposits WHERE user_id = ? ORDER BY timestamp DESC",
+        const result = await pool.query(
+            "SELECT id, amount, status, timestamp, receipt_filename FROM deposits WHERE user_id = $1 ORDER BY timestamp DESC",
             [req.userId]
         );
-        const history = rows.map(item => ({
+        const history = result.rows.map(item => ({
             id: item.id,
             amount: parseFloat(item.amount),
             status: item.status,
-            timestamp: item.timestamp.toISOString(),
+            timestamp: item.timestamp ? item.timestamp.toISOString() : null,
             receipt_filename: item.receipt_filename
         }));
         res.status(200).json({ history: history });
@@ -392,17 +400,17 @@ app.get('/api/deposits/history', authenticateToken, async (req, res) => {
 
 app.get('/api/investments/history', authenticateToken, async (req, res) => {
     try {
-        const [rows] = await pool.query(
-            "SELECT id, package_name, amount, roi, status, timestamp FROM investments WHERE user_id = ? ORDER BY timestamp DESC",
+        const result = await pool.query(
+            "SELECT id, package_name, amount, roi, status, timestamp FROM investments WHERE user_id = $1 ORDER BY timestamp DESC",
             [req.userId]
         );
-        const history = rows.map(item => ({
+        const history = result.rows.map(item => ({
             id: item.id,
             packageName: item.package_name,
             amount: parseFloat(item.amount),
             roi: item.roi,
             status: item.status,
-            timestamp: item.timestamp.toISOString()
+            timestamp: item.timestamp ? item.timestamp.toISOString() : null
         }));
         res.status(200).json({ history: history });
     } catch (err) {
