@@ -12,11 +12,7 @@ const path = require('path');
 const { v4: uuidv4 } = require('uuid'); // Para gerar UUIDs
 
 const app = express();
-const PORT = process.env.PORT;
-
-if (!PORT) {
-    throw new Error("A variável de ambiente PORT não está definida.");
-  }
+const PORT = process.env.PORT || 5000;
 
 // ==============================================================================
 // CONFIGURAÇÃO DE CAMINHOS
@@ -34,55 +30,25 @@ if (!require('fs').existsSync(UPLOAD_FOLDER)) {
 // ==============================================================================
 // MIDDLEWARE
 // ==============================================================================
-
-
-const allowedOrigins = [
-    "http://127.0.0.1:5500",
-    "http://localhost:5500",
-    process.env.RAILWAY_STATIC_URL || "https://cucaproject-cucaproject1.up.railway.app"
-  ];
-  
-  app.use(cors({
-    origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        console.warn("🚨 Bloqueado por CORS:", origin);
-        callback(new Error("CORS não permitido para esta origem: " + origin));
-      }
-    },
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"]
-  }));
-  
-  // 🔥 Garantir que todos os OPTIONS sejam tratados
-  app.options("*", (req, res) => {
-    res.header("Access-Control-Allow-Origin", req.headers.origin || "*");
-    res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
-    return res.sendStatus(200);
-  });
-  
-  
- // Permite requisições de diferentes origens (frontend)
+app.use(cors()); // Permite requisições de diferentes origens (frontend)
 app.use(express.json()); // Habilita o parsing de JSON no corpo das requisições
 app.use(express.urlencoded({ extended: true })); // Habilita o parsing de URL-encoded no corpo das requisições
 
 // Serve ficheiros estáticos da pasta 'frontend'
-app.use(express.static(FRONTEND_DIR));
-app.use('/static', express.static(STATIC_FILES_DIR));
+~// app.use(express.static(FRONTEND_DIR));
+// app.use('/static', express.static(STATIC_FILES_DIR));
 app.use('/uploads', express.static(UPLOAD_FOLDER)); // Para servir comprovativos de upload
 
 // ==============================================================================
 // CONFIGURAÇÃO DO MYSQL
 // ==============================================================================
 const pool = mysql.createPool({
-    host: process.env.DB_HOST,
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    database: process.env.DB_DATABASE,
+    host: process.env.MYSQL_HOST,
+    user: process.env.MYSQL_USER,
+    password: process.env.MYSQL_ROOT_PASSWORD, // Use a variável correta para a senha
+    database: process.env.MYSQL_DATABASE,
     waitForConnections: true,
-    connectionLimit: 10,
+    connectionLimit: 15,
     queueLimit: 0
 });
 
@@ -146,20 +112,20 @@ const authenticateToken = (req, res, next) => {
 // ==============================================================================
 
 // Rota para o ficheiro HTML raiz (Login)
-app.get('/', (req, res) => {
-    res.sendFile(path.join(FRONTEND_DIR, 'Login.html'));
-});
+// app.get('/', (req, res) => {
+  //  res.sendFile(path.join(FRONTEND_DIR, 'Login.html'));
+// });
 
 // Rota para outros ficheiros HTML (por exemplo, Pagina inicial.html)
-app.get('/:html_file.html', (req, res) => {
-    const filePath = path.join(FRONTEND_DIR, `${req.params.html_file}.html`);
-    res.sendFile(filePath, (err) => {
-        if (err) {
-            console.error(`Erro ao servir ${filePath}:`, err);
-            res.status(404).send('Ficheiro não encontrado.');
-        }
-    });
-});
+// app.get('/:html_file.html', (req, res) => {
+  //  const filePath = path.join(FRONTEND_DIR, `${req.params.html_file}.html`);
+   // res.sendFile(filePath, (err) => {
+      //  if (err) {
+        //    console.error(`Erro ao servir ${filePath}:`, err);
+        //    res.status(404).send('Ficheiro não encontrado.');
+     //   }
+  //  });
+// });
 
 
 app.post('/api/register', async (req, res) => {
@@ -378,7 +344,7 @@ app.post('/api/withdraw', authenticateToken, async (req, res) => {
             return res.status(400).json({ error: 'Saldo de saque insuficiente.' });
         }
 
-        const fee = amount * (process.env.WITHDRAW_FEE_PERCENTAGE || 0.00);
+        const fee = amount * (process.env.WITHDRAW_FEE_PERCENTAGE || 0.05);
         const actualAmount = amount - fee;
 
         connection = await pool.getConnection(); // ✅ só inicializa aqui
@@ -487,16 +453,11 @@ app.get('/api/withdrawals/history', authenticateToken, async (req, res) => {
     }
 });
 
-
-
-
 // ==============================================================================
 // INICIAR O SERVIDOR
 // ==============================================================================
-
-app.listen(PORT, "0.0.0.0", () => {
-    console.log(`🚀 Servidor rodando na porta ${PORT}`);
-  });
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Servidor Node.js a correr em http://localhost:${PORT}`);
     console.log('Rotas disponíveis:');
     console.log(`- POST /api/register`);
     console.log(`- POST /api/login`);
@@ -507,12 +468,11 @@ app.listen(PORT, "0.0.0.0", () => {
     console.log(`- POST /api/withdraw`);
     console.log(`- POST /api/link-account`);
     console.log(`- GET /api/withdrawals/history`);
-    console.log(`- GET /api/deposits/history`)
-console.log(`- GET /api/investments/history`);
-
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
-
-
+});
+app.post("/api/register", async (req, res) => {
+   // código de registro
+});
 // Adicione esta rota em algum lugar com as outras rotas GET, por exemplo,
 // após a rota '/api/withdrawals/history'.
 
@@ -541,10 +501,6 @@ app.get('/api/deposits/history', authenticateToken, async (req, res) => {
     }
 });
 
-app.use((req, res) => {
-    res.status(404).json({ error: "Endpoint não encontrado." });
-  });
-  
 // Não se esqueça de adicionar esta nova rota à lista de rotas disponíveis no `app.listen`
 // console.log(`- GET /api/deposits/history`);
 
@@ -574,3 +530,4 @@ app.get('/api/investments/history', authenticateToken, async (req, res) => {
         res.status(500).json({ error: 'Erro interno do servidor ao carregar histórico de investimentos.', message: err.message });
     }
 });
+
