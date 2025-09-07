@@ -40,14 +40,16 @@ app.use(express.static(path.join(FRONTEND_DIR, 'public'))); // Adicione esta lin
 // CONFIGURAÇÃO DO MYSQL
 // ==============================================================================
 const pool = mysql.createPool({
-    host: process.env.MYSQL_HOST,
-    user: process.env.MYSQL_USER,
-    password: process.env.MYSQL_ROOT_PASSWORD,
-    database: process.env.MYSQL_DATABASE,
+    host: process.env.MYSQLHOST,
+    user: process.env.MYSQLUSER,
+    password: process.env.MYSQLPASSWORD, // <-- aqui estava errado
+    database: process.env.MYSQLDATABASE,
+    port: process.env.MYSQLPORT,
     waitForConnections: true,
-    connectionLimit: 15,
+    connectionLimit: 25,
     queueLimit: 0
 });
+
 
 // ==============================================================================
 // CONFIGURAÇÃO DE UPLOAD DE FICHEIROS (MULTER)
