@@ -700,13 +700,16 @@ app.post('/api/admin/packages', authenticateToken, async (req, res) => {
 app.put('/api/admin/packages/:id', authenticateToken, authenticateAdmin, async (req, res) => {
     try {
         const { id } = req.params;
-        const { name, min, max, daily, duration, status, description } = req.body;
+        const { name, min_investment, max_investment, daily_return_rate, duration_days, status, description } = req.body;
+
         const result = await pool.query(
             `UPDATE investment_packages 
-             SET name=$1, min=$2, max=$3, daily=$4, duration=$5, status=$6, description=$7
+             SET name=$1, min_investment=$2, max_investment=$3, 
+                 daily_return_rate=$4, duration_days=$5, status=$6, description=$7
              WHERE id=$8`,
-            [name, min, max, daily, duration, status, description, id]
+            [name, min_investment, max_investment, daily_return_rate, duration_days, status, description, id]
         );
+
         if (result.rowCount === 0) return res.status(404).json({ message: 'Pacote não encontrado.' });
         res.json({ message: 'Pacote atualizado com sucesso.' });
     } catch (err) {
@@ -714,6 +717,7 @@ app.put('/api/admin/packages/:id', authenticateToken, authenticateAdmin, async (
         res.status(500).json({ message: 'Erro ao atualizar pacote', error: err.message });
     }
 });
+
 
 // Deletar pacote
 app.delete('/api/admin/packages/:id', authenticateToken, authenticateAdmin, async (req, res) => {
@@ -787,6 +791,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
 
