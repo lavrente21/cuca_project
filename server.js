@@ -568,45 +568,44 @@ app.put('/api/admin/deposits/:id', authenticateToken, async (req, res) => {
 
 
 // -------------------- APROVAR / REJEITAR DEPÓSITO --------------------
-// Atualizar status do depósito (aprovar ou rejeitar)
-app.put('/api/admin/deposits/:id', authenticateToken, authenticateAdmin, async (req, res) => {
+// Aprovar ou rejeitar depósito
+app.put('/api/admin/deposits/:id', authenticateToken, async (req, res) => {
+    if (!req.user.is_admin) {
+        return res.status(403).json({ error: 'Acesso negado: Admin apenas.' });
+    }
+
+    const { id } = req.params;
+    const { status } = req.body;
+
     try {
-        const { id } = req.params;
-        const { status } = req.body;
-
         // Buscar depósito
-        const depositRes = await pool.query(
-            'SELECT * FROM deposits WHERE id = $1',
-            [id]
-        );
-
+        const depositRes = await pool.query('SELECT * FROM deposits WHERE id = $1', [id]);
         if (depositRes.rows.length === 0) {
-            return res.status(404).json({ error: "Depósito não encontrado" });
+            return res.status(404).json({ error: 'Depósito não encontrado' });
         }
 
         const deposit = depositRes.rows[0];
 
         // Atualizar status do depósito
-        await pool.query(
-            'UPDATE deposits SET status = $1 WHERE id = $2',
-            [status, id]
-        );
+        await pool.query('UPDATE deposits SET status = $1 WHERE id = $2', [status, id]);
 
-        // Se aprovado, atualizar saldo de recarga do usuário
+        // Se for aprovado, somar no saldo do usuário
         if (status === 'Aprovado') {
+            const amount = parseFloat(deposit.amount);
+
             await pool.query(
-                `UPDATE users 
-                 SET balance_recharge = balance_recharge + $1,
-                     balance = balance + $1
+                `UPDATE users
+                 SET balance_recharge = COALESCE(balance_recharge, 0) + $1,
+                     balance = COALESCE(balance, 0) + $1
                  WHERE id = $2`,
-                [deposit.amount, deposit.user_id]
+                [amount, deposit.user_id]
             );
         }
 
-        res.json({ message: `Depósito ${status.toLowerCase()} com sucesso.` });
+        res.json({ message: `Depósito ${status} com sucesso.` });
     } catch (err) {
-        console.error("Erro ao atualizar depósito:", err);
-        res.status(500).json({ error: "Erro interno ao atualizar depósito" });
+        console.error('Erro ao atualizar depósito:', err);
+        res.status(500).json({ error: 'Erro interno no servidor' });
     }
 });
 
@@ -729,6 +728,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
 
