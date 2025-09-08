@@ -641,7 +641,7 @@ app.get('/api/admin/withdrawals', authenticateToken, authenticateAdmin, async (r
 });
 
 // -------------------- APROVAR / REJEITAR SAQUE --------------------
-app.post('/api/admin/withdrawals/:id', authenticateToken, authenticateAdmin, async (req, res) => {
+app.put('/api/admin/withdrawals/:id', authenticateToken, authenticateAdmin, async (req, res) => {
     const { id } = req.params;
     const { status } = req.body; // "Aprovado" ou "Rejeitado"
     if (!['Aprovado', 'Rejeitado'].includes(status)) {
@@ -732,6 +732,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
 
