@@ -30,7 +30,6 @@ if (!fs.existsSync(UPLOAD_FOLDER)) {
 // ==============================================================================
 // MIDDLEWARE
 // ==============================================================================
-app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static(UPLOAD_FOLDER));
@@ -677,16 +676,15 @@ app.put('/api/admin/withdrawals/:id', authenticateToken, authenticateAdmin, asyn
 // Criar novo pacote
 
 
-app.post('/api/admin/packages', authenticateToken, async (req, res) => {
-    if (!req.user.is_admin) return res.sendStatus(403);
-
+// Criar novo pacote
+app.post('/api/admin/packages', authenticateToken, authenticateAdmin, async (req, res) => {
     const { name, description, min_investment, max_investment, daily_return_rate, duration_days, status } = req.body;
 
     try {
         const result = await pool.query(
             `INSERT INTO investment_packages 
-            (id, name, description, min_investment, max_investment, daily_return_rate, duration_days, status) 
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+            (id, name, description, min_investment, max_investment, daily_return_rate, duration_days, status, created_at) 
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW()) RETURNING *`,
             [uuidv4(), name, description, min_investment, max_investment, daily_return_rate, duration_days, status]
         );
         res.json(result.rows[0]);
@@ -695,6 +693,7 @@ app.post('/api/admin/packages', authenticateToken, async (req, res) => {
         res.status(500).json({ error: 'Erro interno ao adicionar pacote' });
     }
 });
+
 
 // Atualizar pacote
 app.put('/api/admin/packages/:id', authenticateToken, authenticateAdmin, async (req, res) => {
@@ -791,6 +790,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
 
