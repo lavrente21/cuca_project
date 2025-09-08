@@ -468,60 +468,31 @@ app.get('/api/admin/users', authenticateToken, authenticateAdmin, async (req, re
 // ========================
 // Atualizar usuário (Admin)
 // ========================
-app.put('/api/admin/users/:id', authenticateAdmin, async (req, res) => {
+app.put('/api/admin/users/:id', authenticateToken, authenticateAdmin, async (req, res) => {
     try {
         const { id } = req.params;
-        const {
-            username,
-            balance,
-            balance_recharge,
-            balance_withdraw,
-            user_id_code,
-            linked_account_bank_name,
-            linked_account_number,
-            is_admin
-        } = req.body;
+        const { username, balance, balance_recharge, balance_withdraw, user_id_code, linked_account_bank_name, linked_account_number, is_admin } = req.body;
 
-        const query = `
-            UPDATE users 
-            SET 
-                username = $1,
-                balance = $2,
-                balance_recharge = $3,
-                balance_withdraw = $4,
-                user_id_code = $5,
-                linked_account_bank_name = $6,
-                linked_account_number = $7,
-                is_admin = $8,
-                updated_at = NOW()
-            WHERE id = $9
-            RETURNING *;
-        `;
+        const result = await pool.query(
+            `UPDATE users 
+             SET username=$1, balance=$2, balance_recharge=$3, balance_withdraw=$4, 
+                 user_id_code=$5, linked_account_bank_name=$6, linked_account_number=$7, is_admin=$8
+             WHERE id=$9`,
+            [username, balance, balance_recharge, balance_withdraw, user_id_code, linked_account_bank_name, linked_account_number, is_admin ? true : false, id]
+        );
 
-        const values = [
-            username,
-            balance,
-            balance_recharge,
-            balance_withdraw,
-            user_id_code,
-            linked_account_bank_name,
-            linked_account_number,
-            is_admin,
-            id
-        ];
-
-        const result = await pool.query(query, values);
-
-        if (result.rows.length === 0) {
-            return res.status(404).json({ message: 'Usuário não encontrado' });
+        if (result.rowCount === 0) {
+            return res.status(404).json({ error: "Usuário não encontrado" });
         }
 
-        res.json({ message: 'Usuário atualizado com sucesso', user: result.rows[0] });
+        res.json({ message: "Usuário atualizado com sucesso" });
     } catch (err) {
-        console.error('Erro ao atualizar usuário:', err);
-        res.status(500).json({ message: 'Erro interno do servidor' });
+        console.error("Erro ao atualizar usuário:", err);
+        res.status(500).json({ error: "Erro ao atualizar usuário" });
     }
 });
+
+
 
 
 // -------------------- LISTAR DEPÓSITOS --------------------
@@ -721,6 +692,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
 
