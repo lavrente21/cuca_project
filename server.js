@@ -510,7 +510,8 @@ app.post('/api/admin/deposits/:id', authenticateToken, authenticateAdmin, async 
 });
 
 // -------------------- LISTAR SAQUES --------------------
-app.get('/api/admin/withdrawals', authenticateAdmin, async (req, res) => {
+// -------------------- LISTAR SAQUES --------------------
+app.get('/api/admin/withdrawals', authenticateToken, authenticateAdmin, async (req, res) => {
     try {
         const result = await pool.query(`
             SELECT 
@@ -533,7 +534,6 @@ app.get('/api/admin/withdrawals', authenticateAdmin, async (req, res) => {
         res.status(500).json({ message: 'Erro no servidor' });
     }
 });
-
 
 // -------------------- APROVAR / REJEITAR SAQUE --------------------
 app.post('/api/admin/withdrawals/:id', authenticateToken, authenticateAdmin, async (req, res) => {
@@ -627,5 +627,6 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
