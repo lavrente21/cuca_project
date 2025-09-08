@@ -578,9 +578,7 @@ app.put('/api/admin/deposits/:id', authenticateToken, authenticateAdmin, async (
 
 
 // -------------------- APROVAR / REJEITAR DEPÓSITO --------------------
-app.put('/api/admin/deposits/:id', authenticateToken, authenticateAdmin, async (req, res) => {
-    const { id } = req.params;
-    const { status } = req.body;
+
 
     try {
         const depositResult = await pool.query('SELECT * FROM deposits WHERE id = $1', [id]);
@@ -743,31 +741,75 @@ app.get('/api/admin/packages', authenticateToken, authenticateAdmin, async (req,
 
 
 // -------------------- GERIR POSTS --------------------
-app.get('/api/admin/posts', authenticateToken, authenticateAdmin, async (req, res) => {
+
+app.get('/api/blog/posts', async (req, res) => {
     try {
-        const result = await pool.query("SELECT * FROM posts ORDER BY created_at DESC");
-        res.status(200).json({ posts: result.rows });
+        const result = await pool.query(
+            `SELECT bp.id, bp.title, bp.content, bp.image_url, bp.published_at, u.username AS author
+             FROM blog_posts bp
+             JOIN users u ON u.id = bp.author_id
+             WHERE bp.is_approved = true
+             ORDER BY bp.published_at DESC`
+        );
+        res.json({ posts: result.rows });
     } catch (err) {
-        console.error('Erro ao listar posts (admin):', err);
-        res.status(500).json({ message: 'Erro interno ao carregar posts.', error: err.message });
+        console.error('Erro ao listar posts aprovados:', err);
+        res.status(500).json({ message: 'Erro interno ao listar posts.', error: err.message });
     }
 });
 
-app.post('/api/admin/posts', authenticateToken, authenticateAdmin, async (req, res) => {
-    const { title, content } = req.body;
+
+app.post('/api/blog/posts', authenticateToken, async (req, res) => {
+    const { title, content, image_url } = req.body;
     if (!title || !content) return res.status(400).json({ message: 'Título e conteúdo são obrigatórios.' });
+
     try {
+        const limitRes = await pool.query("SELECT allowed_posts FROM user_blog_limit WHERE user_id = $1", [req.userId]);
+        const allowedPosts = limitRes.rows[0]?.allowed_posts || 0;
+        if (allowedPosts <= 0) {
+            return res.status(403).json({ message: 'Você não tem posts disponíveis. Faça um saque para liberar publicações.' });
+        }
+
         const postId = uuidv4();
         await pool.query(
-            "INSERT INTO posts (id, title, content, created_at) VALUES ($1, $2, $3, $4)",
-            [postId, title, content, new Date()]
+            `INSERT INTO blog_posts (id, author_id, title, content, image_url, is_approved)
+             VALUES ($1, $2, $3, $4, $5, false)`,
+            [postId, req.userId, title, content, image_url || null]
         );
-        res.status(201).json({ message: 'Post criado com sucesso.', postId });
+
+        // Reduz allowed_posts
+        await pool.query(
+            "UPDATE user_blog_limit SET allowed_posts = allowed_posts - 1 WHERE user_id = $1",
+            [req.userId]
+        );
+
+        res.status(201).json({ message: 'Post enviado para aprovação do admin.', postId });
     } catch (err) {
-        console.error('Erro ao criar post (admin):', err);
+        console.error('Erro ao criar post do blog:', err);
         res.status(500).json({ message: 'Erro interno ao criar post.', error: err.message });
     }
 });
+app.put('/api/admin/blog/posts/:id', authenticateToken, authenticateAdmin, async (req, res) => {
+    const { id } = req.params;
+    const { is_approved } = req.body;
+
+    if (typeof is_approved !== 'boolean') return res.status(400).json({ message: 'is_approved deve ser true ou false' });
+
+    try {
+        const result = await pool.query(
+            "UPDATE blog_posts SET is_approved = $1 WHERE id = $2 RETURNING *",
+            [is_approved, id]
+        );
+        if (result.rowCount === 0) return res.status(404).json({ message: 'Post não encontrado.' });
+
+        res.json({ message: `Post ${is_approved ? 'aprovado' : 'rejeitado'} com sucesso.` });
+    } catch (err) {
+        console.error('Erro ao aprovar/rejeitar post:', err);
+        res.status(500).json({ message: 'Erro interno.', error: err.message });
+    }
+});
+
+
 
 
 // ==============================================================================
@@ -790,6 +832,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
 
