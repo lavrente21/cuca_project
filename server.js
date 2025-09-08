@@ -468,13 +468,48 @@ app.get('/api/admin/users', authenticateToken, authenticateAdmin, async (req, re
 // -------------------- LISTAR DEPÓSITOS --------------------
 app.get('/api/admin/deposits', authenticateToken, authenticateAdmin, async (req, res) => {
     try {
-        const result = await pool.query("SELECT * FROM deposits ORDER BY timestamp DESC");
-        res.status(200).json({ deposits: result.rows });
+        const result = await pool.query(`
+            SELECT 
+                d.id,
+                d.amount,
+                d.status,
+                d.timestamp,
+                d.receipt_filename,
+                u.username
+            FROM deposits d
+            JOIN users u ON d.user_id = u.id
+            ORDER BY d.timestamp DESC
+        `);
+
+        res.json({ deposits: result.rows });
     } catch (err) {
-        console.error('Erro ao listar depósitos (admin):', err);
-        res.status(500).json({ message: 'Erro interno ao carregar depósitos.', error: err.message });
+        console.error('Erro ao buscar depósitos:', err);
+        res.status(500).json({ message: 'Erro no servidor' });
     }
 });
+
+// -------------------- ATUALIZAR STATUS DEPÓSITO --------------------
+app.put('/api/admin/deposits/:id', authenticateToken, authenticateAdmin, async (req, res) => {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    try {
+        const result = await pool.query(
+            'UPDATE deposits SET status = $1 WHERE id = $2 RETURNING *',
+            [status, id]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ message: 'Depósito não encontrado' });
+        }
+
+        res.json({ deposit: result.rows[0] });
+    } catch (err) {
+        console.error('Erro ao atualizar depósito:', err);
+        res.status(500).json({ message: 'Erro no servidor' });
+    }
+});
+
 
 // -------------------- APROVAR / REJEITAR DEPÓSITO --------------------
 app.post('/api/admin/deposits/:id', authenticateToken, authenticateAdmin, async (req, res) => {
@@ -627,6 +662,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
 
