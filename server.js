@@ -448,6 +448,148 @@ const authenticateAdmin = async (req, res, next) => {
 
 // [Aqui entram todas as rotas admin que enviei na mensagem anterior]
 // (Listagem de usuários, depósitos, saques, pacotes de investimento, posts, dashboard admin)
+// ==============================================================================
+// ROTAS ADMIN
+// ==============================================================================
+
+// -------------------- LISTAR USUÁRIOS --------------------
+app.get('/api/admin/users', authenticateToken, authenticateAdmin, async (req, res) => {
+    try {
+        const result = await pool.query(
+            "SELECT id, username, user_id_code, balance, balance_recharge, balance_withdraw, is_admin FROM users ORDER BY username ASC"
+        );
+        res.status(200).json({ users: result.rows });
+    } catch (err) {
+        console.error('Erro ao listar usuários (admin):', err);
+        res.status(500).json({ message: 'Erro interno ao carregar usuários.', error: err.message });
+    }
+});
+
+// -------------------- LISTAR DEPÓSITOS --------------------
+app.get('/api/admin/deposits', authenticateToken, authenticateAdmin, async (req, res) => {
+    try {
+        const result = await pool.query("SELECT * FROM deposits ORDER BY timestamp DESC");
+        res.status(200).json({ deposits: result.rows });
+    } catch (err) {
+        console.error('Erro ao listar depósitos (admin):', err);
+        res.status(500).json({ message: 'Erro interno ao carregar depósitos.', error: err.message });
+    }
+});
+
+// -------------------- APROVAR / REJEITAR DEPÓSITO --------------------
+app.post('/api/admin/deposits/:id', authenticateToken, authenticateAdmin, async (req, res) => {
+    const { id } = req.params;
+    const { status } = req.body; // "Aprovado" ou "Rejeitado"
+    if (!['Aprovado', 'Rejeitado'].includes(status)) {
+        return res.status(400).json({ message: 'Status inválido.' });
+    }
+    let client;
+    try {
+        client = await pool.connect();
+        await client.query('BEGIN');
+        await client.query("UPDATE deposits SET status = $1 WHERE id = $2", [status, id]);
+        if (status === 'Aprovado') {
+            const depositRes = await client.query("SELECT user_id, amount FROM deposits WHERE id = $1", [id]);
+            if (depositRes.rows.length > 0) {
+                const { user_id, amount } = depositRes.rows[0];
+                await client.query(
+                    "UPDATE users SET balance = balance + $1, balance_recharge = balance_recharge + $1 WHERE id = $2",
+                    [amount, user_id]
+                );
+            }
+        }
+        await client.query('COMMIT');
+        res.status(200).json({ message: `Depósito ${status.toLowerCase()} com sucesso.` });
+    } catch (err) {
+        if (client) await client.query('ROLLBACK');
+        console.error('Erro ao processar depósito (admin):', err);
+        res.status(500).json({ message: 'Erro interno ao processar depósito.', error: err.message });
+    } finally {
+        if (client) client.release();
+    }
+});
+
+// -------------------- LISTAR SAQUES --------------------
+app.get('/api/admin/withdrawals', authenticateToken, authenticateAdmin, async (req, res) => {
+    try {
+        const result = await pool.query("SELECT * FROM withdrawals ORDER BY timestamp DESC");
+        res.status(200).json({ withdrawals: result.rows });
+    } catch (err) {
+        console.error('Erro ao listar saques (admin):', err);
+        res.status(500).json({ message: 'Erro interno ao carregar saques.', error: err.message });
+    }
+});
+
+// -------------------- APROVAR / REJEITAR SAQUE --------------------
+app.post('/api/admin/withdrawals/:id', authenticateToken, authenticateAdmin, async (req, res) => {
+    const { id } = req.params;
+    const { status } = req.body; // "Aprovado" ou "Rejeitado"
+    if (!['Aprovado', 'Rejeitado'].includes(status)) {
+        return res.status(400).json({ message: 'Status inválido.' });
+    }
+    let client;
+    try {
+        client = await pool.connect();
+        await client.query('BEGIN');
+        const withdrawalRes = await client.query("SELECT user_id, requested_amount, actual_amount, status AS current_status FROM withdrawals WHERE id = $1", [id]);
+        if (withdrawalRes.rows.length === 0) throw new Error('Saque não encontrado.');
+        const { user_id, requested_amount, actual_amount, current_status } = withdrawalRes.rows[0];
+        if (current_status !== 'Pendente') throw new Error('Saque já processado.');
+        await client.query("UPDATE withdrawals SET status = $1 WHERE id = $2", [status, id]);
+        if (status === 'Rejeitado') {
+            await client.query(
+                "UPDATE users SET balance = balance + $1, balance_withdraw = balance_withdraw + $1 WHERE id = $2",
+                [requested_amount, user_id]
+            );
+        }
+        await client.query('COMMIT');
+        res.status(200).json({ message: `Saque ${status.toLowerCase()} com sucesso.` });
+    } catch (err) {
+        if (client) await client.query('ROLLBACK');
+        console.error('Erro ao processar saque (admin):', err);
+        res.status(500).json({ message: 'Erro interno ao processar saque.', error: err.message });
+    } finally {
+        if (client) client.release();
+    }
+});
+
+// -------------------- LISTAR PACOTES --------------------
+app.get('/api/admin/packages', authenticateToken, authenticateAdmin, async (req, res) => {
+    try {
+        const result = await pool.query("SELECT * FROM investment_packages ORDER BY name ASC");
+        res.status(200).json({ packages: result.rows });
+    } catch (err) {
+        console.error('Erro ao listar pacotes (admin):', err);
+        res.status(500).json({ message: 'Erro interno ao carregar pacotes.', error: err.message });
+    }
+});
+
+// -------------------- GERIR POSTS --------------------
+app.get('/api/admin/posts', authenticateToken, authenticateAdmin, async (req, res) => {
+    try {
+        const result = await pool.query("SELECT * FROM posts ORDER BY created_at DESC");
+        res.status(200).json({ posts: result.rows });
+    } catch (err) {
+        console.error('Erro ao listar posts (admin):', err);
+        res.status(500).json({ message: 'Erro interno ao carregar posts.', error: err.message });
+    }
+});
+
+app.post('/api/admin/posts', authenticateToken, authenticateAdmin, async (req, res) => {
+    const { title, content } = req.body;
+    if (!title || !content) return res.status(400).json({ message: 'Título e conteúdo são obrigatórios.' });
+    try {
+        const postId = uuidv4();
+        await pool.query(
+            "INSERT INTO posts (id, title, content, created_at) VALUES ($1, $2, $3, $4)",
+            [postId, title, content, new Date()]
+        );
+        res.status(201).json({ message: 'Post criado com sucesso.', postId });
+    } catch (err) {
+        console.error('Erro ao criar post (admin):', err);
+        res.status(500).json({ message: 'Erro interno ao criar post.', error: err.message });
+    }
+});
 
 
 // ==============================================================================
@@ -470,3 +612,4 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
