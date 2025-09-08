@@ -37,11 +37,14 @@ app.use('/uploads', express.static(UPLOAD_FOLDER));
 app.use(express.static(path.join(FRONTEND_DIR, 'public'))); // Adicione esta linha se tiver uma pasta 'public'
 
 // Configuração CORS
+const cors = require('cors');
+
 app.use(cors({
-  origin: ["http://127.0.0.1:5500", "https://cuca-project-5.onrender.com"], // libera teu frontend local e o render
-  methods: ["GET", "POST", "PUT", "DELETE"],
-  allowedHeaders: ["Content-Type", "Authorization"]
+    origin: '*',              // 🔥 libera acesso de qualquer origem
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    allowedHeaders: ['Content-Type', 'Authorization']
 }));
+
 
 // Teste CORS
 app.get("/", (req, res) => {
@@ -531,16 +534,12 @@ app.get('/api/admin/deposits', authenticateToken, authenticateAdmin, async (req,
 });
 
 // -------------------- ATUALIZAR STATUS DEPÓSITO --------------------
-app.put('/api/admin/deposits/:id', authenticateToken, async (req, res) => {
-    if (!req.user.is_admin) {
-        return res.status(403).json({ error: 'Acesso negado: Admin apenas.' });
-    }
-
+// Atualizar depósito (aprovar/rejeitar)
+app.put('/api/admin/deposits/:id', authenticateToken, authenticateAdmin, async (req, res) => {
     const { id } = req.params;
     const { status } = req.body;
 
     try {
-        // Buscar o depósito
         const depositResult = await pool.query(
             'SELECT * FROM deposits WHERE id = $1',
             [id]
@@ -552,15 +551,14 @@ app.put('/api/admin/deposits/:id', authenticateToken, async (req, res) => {
 
         const deposit = depositResult.rows[0];
 
-        // Atualizar status do depósito
         await pool.query(
             'UPDATE deposits SET status = $1 WHERE id = $2',
             [status, id]
         );
 
-        // Se for aprovado, somar no saldo do usuário
+        // 🔥 Se aprovado, soma no saldo e no saldo de recarga
         if (status === 'Aprovado') {
-            const amount = parseFloat(deposit.amount); // 🔥 garante número
+            const amount = parseFloat(deposit.amount);
 
             await pool.query(
                 `UPDATE users 
@@ -574,9 +572,10 @@ app.put('/api/admin/deposits/:id', authenticateToken, async (req, res) => {
         res.json({ message: `Depósito ${status} com sucesso.` });
     } catch (err) {
         console.error('Erro ao atualizar depósito:', err);
-        res.status(500).json({ error: 'Erro ao atualizar depósito.' });
+        res.status(500).json({ error: 'Erro ao atualizar depósito' });
     }
 });
+
 
 
 // -------------------- APROVAR / REJEITAR DEPÓSITO --------------------
@@ -740,6 +739,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
 
