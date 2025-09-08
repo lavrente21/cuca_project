@@ -722,6 +722,16 @@ app.delete('/api/admin/packages/:id', authenticateToken, authenticateAdmin, asyn
         res.status(500).json({ message: 'Erro ao excluir pacote', error: err.message });
     }
 });
+// Listar pacotes
+app.get('/api/admin/packages', authenticateToken, authenticateAdmin, async (req, res) => {
+    try {
+        const result = await pool.query("SELECT * FROM investment_packages ORDER BY created_at DESC NULLS LAST");
+        res.status(200).json({ packages: result.rows });
+    } catch (err) {
+        console.error("Erro ao listar pacotes:", err);
+        res.status(500).json({ error: "Erro ao listar pacotes" });
+    }
+});
 
 
 // -------------------- GERIR POSTS --------------------
@@ -772,6 +782,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
 
