@@ -675,7 +675,7 @@ app.put('/api/admin/withdrawals/:id', authenticateToken, authenticateAdmin, asyn
 
 // -------------------- LISTAR PACOTES --------------------
 // Criar novo pacote
-import { v4 as uuidv4 } from 'uuid';
+
 
 app.post('/api/admin/packages', authenticateToken, async (req, res) => {
     if (!req.user.is_admin) return res.sendStatus(403);
@@ -791,6 +791,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
 
