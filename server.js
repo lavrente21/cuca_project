@@ -510,15 +510,30 @@ app.post('/api/admin/deposits/:id', authenticateToken, authenticateAdmin, async 
 });
 
 // -------------------- LISTAR SAQUES --------------------
-app.get('/api/admin/withdrawals', authenticateToken, authenticateAdmin, async (req, res) => {
+app.get('/api/admin/withdrawals', authenticateAdmin, async (req, res) => {
     try {
-        const result = await pool.query("SELECT * FROM withdrawals ORDER BY timestamp DESC");
-        res.status(200).json({ withdrawals: result.rows });
+        const result = await pool.query(`
+            SELECT 
+                w.id,
+                w.requested_amount,
+                w.fee,
+                w.actual_amount,
+                w.status,
+                w.timestamp,
+                w.account_number_used,
+                u.username
+            FROM withdrawals w
+            JOIN users u ON w.user_id = u.id
+            ORDER BY w.timestamp DESC
+        `);
+
+        res.json({ withdrawals: result.rows });
     } catch (err) {
-        console.error('Erro ao listar saques (admin):', err);
-        res.status(500).json({ message: 'Erro interno ao carregar saques.', error: err.message });
+        console.error('Erro ao buscar levantamentos:', err);
+        res.status(500).json({ message: 'Erro no servidor' });
     }
 });
+
 
 // -------------------- APROVAR / REJEITAR SAQUE --------------------
 app.post('/api/admin/withdrawals/:id', authenticateToken, authenticateAdmin, async (req, res) => {
@@ -612,4 +627,5 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
