@@ -674,15 +674,55 @@ app.put('/api/admin/withdrawals/:id', authenticateToken, authenticateAdmin, asyn
 });
 
 // -------------------- LISTAR PACOTES --------------------
-app.get('/api/admin/packages', authenticateToken, authenticateAdmin, async (req, res) => {
+// Criar novo pacote
+app.post('/api/admin/packages', authenticateToken, authenticateAdmin, async (req, res) => {
     try {
-        const result = await pool.query("SELECT * FROM investment_packages ORDER BY name ASC");
-        res.status(200).json({ packages: result.rows });
+        const { name, min, max, daily, duration, status, description } = req.body;
+        const id = uuidv4();
+        await pool.query(
+            `INSERT INTO investment_packages (id, name, min, max, daily, duration, status, description) 
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+            [id, name, min, max, daily, duration, status, description]
+        );
+        res.status(201).json({ message: 'Pacote criado com sucesso.', id });
     } catch (err) {
-        console.error('Erro ao listar pacotes (admin):', err);
-        res.status(500).json({ message: 'Erro interno ao carregar pacotes.', error: err.message });
+        console.error('Erro ao criar pacote:', err);
+        res.status(500).json({ message: 'Erro ao criar pacote', error: err.message });
     }
 });
+
+// Atualizar pacote
+app.put('/api/admin/packages/:id', authenticateToken, authenticateAdmin, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { name, min, max, daily, duration, status, description } = req.body;
+        const result = await pool.query(
+            `UPDATE investment_packages 
+             SET name=$1, min=$2, max=$3, daily=$4, duration=$5, status=$6, description=$7
+             WHERE id=$8`,
+            [name, min, max, daily, duration, status, description, id]
+        );
+        if (result.rowCount === 0) return res.status(404).json({ message: 'Pacote não encontrado.' });
+        res.json({ message: 'Pacote atualizado com sucesso.' });
+    } catch (err) {
+        console.error('Erro ao atualizar pacote:', err);
+        res.status(500).json({ message: 'Erro ao atualizar pacote', error: err.message });
+    }
+});
+
+// Deletar pacote
+app.delete('/api/admin/packages/:id', authenticateToken, authenticateAdmin, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const result = await pool.query("DELETE FROM investment_packages WHERE id=$1", [id]);
+        if (result.rowCount === 0) return res.status(404).json({ message: 'Pacote não encontrado.' });
+        res.json({ message: 'Pacote excluído com sucesso.' });
+    } catch (err) {
+        console.error('Erro ao excluir pacote:', err);
+        res.status(500).json({ message: 'Erro ao excluir pacote', error: err.message });
+    }
+});
+
 
 // -------------------- GERIR POSTS --------------------
 app.get('/api/admin/posts', authenticateToken, authenticateAdmin, async (req, res) => {
@@ -732,6 +772,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
 
