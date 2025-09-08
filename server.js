@@ -578,7 +578,9 @@ app.put('/api/admin/deposits/:id', authenticateToken, authenticateAdmin, async (
 
 
 // -------------------- APROVAR / REJEITAR DEPÓSITO --------------------
-
+app.put('/api/admin/deposits/:id', authenticateToken, authenticateAdmin, async (req, res) => {
+    const { id } = req.params;
+    const { status } = req.body;
 
     try {
         const depositResult = await pool.query('SELECT * FROM deposits WHERE id = $1', [id]);
@@ -832,6 +834,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
 
