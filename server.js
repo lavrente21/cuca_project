@@ -519,24 +519,50 @@ app.get('/api/admin/deposits', authenticateToken, authenticateAdmin, async (req,
 });
 
 // -------------------- ATUALIZAR STATUS DEPÓSITO --------------------
-app.put('/api/admin/deposits/:id', authenticateToken, authenticateAdmin, async (req, res) => {
+app.put('/api/admin/deposits/:id', authenticateToken, async (req, res) => {
+    if (!req.user.is_admin) {
+        return res.status(403).json({ error: 'Acesso negado: Admin apenas.' });
+    }
+
     const { id } = req.params;
     const { status } = req.body;
 
     try {
-        const result = await pool.query(
-            'UPDATE deposits SET status = $1 WHERE id = $2 RETURNING *',
+        // Buscar o depósito
+        const depositResult = await pool.query(
+            'SELECT * FROM deposits WHERE id = $1',
+            [id]
+        );
+
+        if (depositResult.rows.length === 0) {
+            return res.status(404).json({ error: 'Depósito não encontrado' });
+        }
+
+        const deposit = depositResult.rows[0];
+
+        // Atualizar status do depósito
+        await pool.query(
+            'UPDATE deposits SET status = $1 WHERE id = $2',
             [status, id]
         );
 
-        if (result.rows.length === 0) {
-            return res.status(404).json({ message: 'Depósito não encontrado' });
+        // Se for aprovado, somar no saldo do usuário
+        if (status === 'Aprovado') {
+            const amount = parseFloat(deposit.amount); // 🔥 garante número
+
+            await pool.query(
+                `UPDATE users 
+                 SET balance_recharge = COALESCE(balance_recharge, 0) + $1,
+                     balance = COALESCE(balance, 0) + $1
+                 WHERE id = $2`,
+                [amount, deposit.user_id]
+            );
         }
 
-        res.json({ deposit: result.rows[0] });
+        res.json({ message: `Depósito ${status} com sucesso.` });
     } catch (err) {
         console.error('Erro ao atualizar depósito:', err);
-        res.status(500).json({ message: 'Erro no servidor' });
+        res.status(500).json({ error: 'Erro ao atualizar depósito.' });
     }
 });
 
@@ -703,6 +729,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
 
