@@ -675,19 +675,24 @@ app.put('/api/admin/withdrawals/:id', authenticateToken, authenticateAdmin, asyn
 
 // -------------------- LISTAR PACOTES --------------------
 // Criar novo pacote
-app.post('/api/admin/packages', authenticateToken, authenticateAdmin, async (req, res) => {
+import { v4 as uuidv4 } from 'uuid';
+
+app.post('/api/admin/packages', authenticateToken, async (req, res) => {
+    if (!req.user.is_admin) return res.sendStatus(403);
+
+    const { name, description, min_investment, max_investment, daily_return_rate, duration_days, status } = req.body;
+
     try {
-        const { name, min, max, daily, duration, status, description } = req.body;
-        const id = uuidv4();
-        await pool.query(
-            `INSERT INTO investment_packages (id, name, min, max, daily, duration, status, description) 
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-            [id, name, min, max, daily, duration, status, description]
+        const result = await pool.query(
+            `INSERT INTO investment_packages 
+            (id, name, description, min_investment, max_investment, daily_return_rate, duration_days, status) 
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+            [uuidv4(), name, description, min_investment, max_investment, daily_return_rate, duration_days, status]
         );
-        res.status(201).json({ message: 'Pacote criado com sucesso.', id });
+        res.json(result.rows[0]);
     } catch (err) {
-        console.error('Erro ao criar pacote:', err);
-        res.status(500).json({ message: 'Erro ao criar pacote', error: err.message });
+        console.error('Erro ao adicionar pacote:', err.message);
+        res.status(500).json({ error: 'Erro interno ao adicionar pacote' });
     }
 });
 
@@ -782,6 +787,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
 
