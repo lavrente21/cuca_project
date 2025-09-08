@@ -579,33 +579,25 @@ app.put('/api/admin/deposits/:id', authenticateToken, authenticateAdmin, async (
 
 
 // -------------------- APROVAR / REJEITAR DEPÓSITO --------------------
-// Aprovar ou rejeitar depósito
-app.put('/api/admin/deposits/:id', authenticateToken, async (req, res) => {
-    if (!req.user.is_admin) {
-        return res.status(403).json({ error: 'Acesso negado: Admin apenas.' });
-    }
-
+app.put('/api/admin/deposits/:id', authenticateToken, authenticateAdmin, async (req, res) => {
     const { id } = req.params;
     const { status } = req.body;
 
     try {
-        // Buscar depósito
-        const depositRes = await pool.query('SELECT * FROM deposits WHERE id = $1', [id]);
-        if (depositRes.rows.length === 0) {
+        const depositResult = await pool.query('SELECT * FROM deposits WHERE id = $1', [id]);
+
+        if (depositResult.rows.length === 0) {
             return res.status(404).json({ error: 'Depósito não encontrado' });
         }
 
-        const deposit = depositRes.rows[0];
+        const deposit = depositResult.rows[0];
 
-        // Atualizar status do depósito
         await pool.query('UPDATE deposits SET status = $1 WHERE id = $2', [status, id]);
 
-        // Se for aprovado, somar no saldo do usuário
         if (status === 'Aprovado') {
             const amount = parseFloat(deposit.amount);
-
             await pool.query(
-                `UPDATE users
+                `UPDATE users 
                  SET balance_recharge = COALESCE(balance_recharge, 0) + $1,
                      balance = COALESCE(balance, 0) + $1
                  WHERE id = $2`,
@@ -616,9 +608,10 @@ app.put('/api/admin/deposits/:id', authenticateToken, async (req, res) => {
         res.json({ message: `Depósito ${status} com sucesso.` });
     } catch (err) {
         console.error('Erro ao atualizar depósito:', err);
-        res.status(500).json({ error: 'Erro interno no servidor' });
+        res.status(500).json({ error: 'Erro ao atualizar depósito' });
     }
 });
+
 
 
 // -------------------- LISTAR SAQUES --------------------
@@ -739,6 +732,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
 
