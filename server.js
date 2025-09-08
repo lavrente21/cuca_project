@@ -542,37 +542,48 @@ app.put('/api/admin/deposits/:id', authenticateToken, authenticateAdmin, async (
 
 
 // -------------------- APROVAR / REJEITAR DEPÓSITO --------------------
-app.post('/api/admin/deposits/:id', authenticateToken, authenticateAdmin, async (req, res) => {
-    const { id } = req.params;
-    const { status } = req.body; // "Aprovado" ou "Rejeitado"
-    if (!['Aprovado', 'Rejeitado'].includes(status)) {
-        return res.status(400).json({ message: 'Status inválido.' });
-    }
-    let client;
+// Atualizar status do depósito (aprovar ou rejeitar)
+app.put('/api/admin/deposits/:id', authenticateToken, authenticateAdmin, async (req, res) => {
     try {
-        client = await pool.connect();
-        await client.query('BEGIN');
-        await client.query("UPDATE deposits SET status = $1 WHERE id = $2", [status, id]);
-        if (status === 'Aprovado') {
-            const depositRes = await client.query("SELECT user_id, amount FROM deposits WHERE id = $1", [id]);
-            if (depositRes.rows.length > 0) {
-                const { user_id, amount } = depositRes.rows[0];
-                await client.query(
-                    "UPDATE users SET balance = balance + $1, balance_recharge = balance_recharge + $1 WHERE id = $2",
-                    [amount, user_id]
-                );
-            }
+        const { id } = req.params;
+        const { status } = req.body;
+
+        // Buscar depósito
+        const depositRes = await pool.query(
+            'SELECT * FROM deposits WHERE id = $1',
+            [id]
+        );
+
+        if (depositRes.rows.length === 0) {
+            return res.status(404).json({ error: "Depósito não encontrado" });
         }
-        await client.query('COMMIT');
-        res.status(200).json({ message: `Depósito ${status.toLowerCase()} com sucesso.` });
+
+        const deposit = depositRes.rows[0];
+
+        // Atualizar status do depósito
+        await pool.query(
+            'UPDATE deposits SET status = $1 WHERE id = $2',
+            [status, id]
+        );
+
+        // Se aprovado, atualizar saldo de recarga do usuário
+        if (status === 'Aprovado') {
+            await pool.query(
+                `UPDATE users 
+                 SET balance_recharge = balance_recharge + $1,
+                     balance = balance + $1
+                 WHERE id = $2`,
+                [deposit.amount, deposit.user_id]
+            );
+        }
+
+        res.json({ message: `Depósito ${status.toLowerCase()} com sucesso.` });
     } catch (err) {
-        if (client) await client.query('ROLLBACK');
-        console.error('Erro ao processar depósito (admin):', err);
-        res.status(500).json({ message: 'Erro interno ao processar depósito.', error: err.message });
-    } finally {
-        if (client) client.release();
+        console.error("Erro ao atualizar depósito:", err);
+        res.status(500).json({ error: "Erro interno ao atualizar depósito" });
     }
 });
+
 
 // -------------------- LISTAR SAQUES --------------------
 // -------------------- LISTAR SAQUES --------------------
@@ -692,6 +703,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
 
