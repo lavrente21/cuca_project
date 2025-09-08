@@ -36,6 +36,18 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static(UPLOAD_FOLDER));
 app.use(express.static(path.join(FRONTEND_DIR, 'public'))); // Adicione esta linha se tiver uma pasta 'public'
 
+// Configuração CORS
+app.use(cors({
+  origin: ["http://127.0.0.1:5500", "https://cuca-project-5.onrender.com"], // libera teu frontend local e o render
+  methods: ["GET", "POST", "PUT", "DELETE"],
+  allowedHeaders: ["Content-Type", "Authorization"]
+}));
+
+// Teste CORS
+app.get("/", (req, res) => {
+  res.json({ message: "Servidor rodando com CORS ativo 🚀" });
+});
+
 // ==============================================================================
 // CONFIGURAÇÃO DO POSTGRES
 // ==============================================================================
@@ -728,6 +740,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
 
