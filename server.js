@@ -98,6 +98,7 @@ const authenticateToken = (req, res, next) => {
 // ROTAS DO BACKEND (ENDPOINTS DA API)
 // ==============================================================================
 
+// -------------------- REGISTRO --------------------
 app.post('/api/register', async (req, res) => {
     const { username, password, transactionPassword } = req.body;
     if (!username || !password || !transactionPassword) {
@@ -126,6 +127,7 @@ app.post('/api/register', async (req, res) => {
     }
 });
 
+// -------------------- LOGIN --------------------
 app.post('/api/login', async (req, res) => {
     const { username, password } = req.body;
     if (!username || !password) {
@@ -152,11 +154,13 @@ app.post('/api/login', async (req, res) => {
     }
 });
 
+// -------------------- LOGOUT --------------------
 app.post('/api/logout', authenticateToken, async (req, res) => {
     console.log(`Utilizador ${req.userId} fez logout (token descartado no cliente).`);
     res.status(200).json({ message: 'Logout bem-sucedido.' });
 });
 
+// -------------------- DASHBOARD USUÁRIO --------------------
 app.get('/api/dashboard', authenticateToken, async (req, res) => {
     try {
         const result = await pool.query(
@@ -185,6 +189,7 @@ app.get('/api/dashboard', authenticateToken, async (req, res) => {
     }
 });
 
+// -------------------- CONTA VINCULADA --------------------
 app.get('/api/linked_account', authenticateToken, async (req, res) => {
     try {
         const result = await pool.query(
@@ -206,6 +211,7 @@ app.get('/api/linked_account', authenticateToken, async (req, res) => {
     }
 });
 
+// -------------------- DEPÓSITO --------------------
 app.post('/api/deposit', authenticateToken, upload.single('file'), async (req, res) => {
     const { amount: amountStr } = req.body;
     const file = req.file;
@@ -248,6 +254,7 @@ app.post('/api/deposit', authenticateToken, upload.single('file'), async (req, r
     }
 });
 
+// -------------------- SAQUE --------------------
 app.post('/api/withdraw', authenticateToken, async (req, res) => {
     const { withdrawAmount: amountStr, transactionPassword } = req.body;
     let client;
@@ -327,6 +334,7 @@ app.post('/api/withdraw', authenticateToken, async (req, res) => {
     }
 });
 
+// -------------------- VINCULAR CONTA --------------------
 app.post('/api/link-account', authenticateToken, async (req, res) => {
     const { bankName, accountNumber, accountHolder, transactionPassword } = req.body;
     if (!bankName || !accountNumber || !accountHolder || !transactionPassword) {
@@ -357,6 +365,7 @@ app.post('/api/link-account', authenticateToken, async (req, res) => {
     }
 });
 
+// -------------------- HISTÓRICOS --------------------
 app.get('/api/withdrawals/history', authenticateToken, async (req, res) => {
     try {
         const result = await pool.query(
@@ -420,6 +429,28 @@ app.get('/api/investments/history', authenticateToken, async (req, res) => {
 });
 
 // ==============================================================================
+// ROTAS ADMIN
+// ==============================================================================
+
+// Middleware para verificar admin
+const authenticateAdmin = async (req, res, next) => {
+    try {
+        const result = await pool.query("SELECT is_admin FROM users WHERE id = $1", [req.userId]);
+        if (!result.rows[0] || !result.rows[0].is_admin) {
+            return res.status(403).json({ message: 'Acesso negado: Admin apenas.' });
+        }
+        next();
+    } catch (err) {
+        console.error('Erro ao autenticar admin:', err);
+        res.status(500).json({ message: 'Erro interno ao verificar admin.' });
+    }
+};
+
+// [Aqui entram todas as rotas admin que enviei na mensagem anterior]
+// (Listagem de usuários, depósitos, saques, pacotes de investimento, posts, dashboard admin)
+
+
+// ==============================================================================
 // INICIAR O SERVIDOR
 // ==============================================================================
 app.listen(PORT, '0.0.0.0', () => {
@@ -436,5 +467,6 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- GET /api/withdrawals/history`);
     console.log(`- GET /api/deposits/history`);
     console.log(`- GET /api/investments/history`);
+    console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
