@@ -37,7 +37,7 @@ app.use('/uploads', express.static(UPLOAD_FOLDER));
 app.use(express.static(path.join(FRONTEND_DIR, 'public'))); // Adicione esta linha se tiver uma pasta 'public'
 
 // Configuração CORS
-const cors = require('cors');
+
 
 app.use(cors({
     origin: '*',              // 🔥 libera acesso de qualquer origem
@@ -732,6 +732,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
 
