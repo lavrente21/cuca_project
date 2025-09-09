@@ -655,16 +655,15 @@ app.put('/api/admin/withdrawals/:id', authenticateToken, authenticateAdmin, asyn
         const { user_id, requested_amount, actual_amount, current_status } = withdrawalRes.rows[0];
         if (current_status !== 'Pendente') throw new Error('Saque já processado.');
         await client.query("UPDATE withdrawals SET status = $1 WHERE id = $2", [status, id]);
-        if (status === 'Rejeitado') {
-         await client.query(
-    `UPDATE users 
+        if (status === 'Rejeitado') 
+         await client.query(`UPDATE users 
      SET balance = COALESCE(balance, 0) + $1, 
          balance_withdraw = COALESCE(balance_withdraw, 0) + $1 
      WHERE id = $2`,
     [requested_amount, user_id]
 );
 
-        }
+        
         await client.query('COMMIT');
         res.status(200).json({ message: `Saque ${status.toLowerCase()} com sucesso.` });
     } catch (err) {
