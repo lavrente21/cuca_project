@@ -779,6 +779,21 @@ app.put('/api/admin/blog/posts/:id', authenticateToken, authenticateAdmin, async
         res.status(500).json({ message: 'Erro interno.', error: err.message });
     }
 });
+// GET posts para admin
+app.get('/api/admin/blog/posts', authenticateToken, authenticateAdmin, async (req, res) => {
+    try {
+        const result = await pool.query(
+            `SELECT bp.id, bp.title, bp.content, bp.image_url, bp.published_at, bp.is_approved, u.username AS author
+             FROM blog_posts bp
+             JOIN users u ON u.id = bp.author_id
+             ORDER BY bp.published_at DESC`
+        );
+        res.json({ posts: result.rows });
+    } catch (err) {
+        console.error('Erro ao listar posts (admin):', err);
+        res.status(500).json({ message: 'Erro interno ao listar posts.', error: err.message });
+    }
+});
 
 
 
@@ -803,6 +818,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
 
