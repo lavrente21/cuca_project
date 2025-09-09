@@ -731,8 +731,10 @@ app.get('/api/blog/posts', async (req, res) => {
 
 
 app.post('/api/blog/posts', authenticateToken, async (req, res) => {
-    const { title, content, image_url } = req.body;
-    if (!title || !content) return res.status(400).json({ message: 'Título e conteúdo são obrigatórios.' });
+    const { content, image_url } = req.body;
+    const title = "SAQUE"; // 🔥 título fixo
+
+    if (!content) return res.status(400).json({ message: 'Conteúdo é obrigatório.' });
 
     try {
         const limitRes = await pool.query("SELECT allowed_posts FROM user_blog_limit WHERE user_id = $1", [req.userId]);
@@ -748,7 +750,6 @@ app.post('/api/blog/posts', authenticateToken, async (req, res) => {
             [postId, req.userId, title, content, image_url || null]
         );
 
-        // Reduz allowed_posts
         await pool.query(
             "UPDATE user_blog_limit SET allowed_posts = allowed_posts - 1 WHERE user_id = $1",
             [req.userId]
@@ -760,6 +761,7 @@ app.post('/api/blog/posts', authenticateToken, async (req, res) => {
         res.status(500).json({ message: 'Erro interno ao criar post.', error: err.message });
     }
 });
+
 app.put('/api/admin/blog/posts/:id', authenticateToken, authenticateAdmin, async (req, res) => {
     const { id } = req.params;
     const { is_approved } = req.body;
@@ -818,6 +820,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
 
