@@ -606,30 +606,53 @@ app.get('/api/admin/withdrawals', authenticateToken, authenticateAdmin, async (r
 });
 
 // -------------------- APROVAR / REJEITAR SAQUE --------------------
+// -------------------- APROVAR / REJEITAR SAQUE --------------------
 app.put('/api/admin/withdrawals/:id', authenticateToken, authenticateAdmin, async (req, res) => {
     const { id } = req.params;
     const { status } = req.body; // "Aprovado" ou "Rejeitado"
+
     if (!['Aprovado', 'Rejeitado'].includes(status)) {
         return res.status(400).json({ message: 'Status inválido.' });
     }
+
     let client;
     try {
         client = await pool.connect();
         await client.query('BEGIN');
-        const withdrawalRes = await client.query("SELECT user_id, requested_amount, actual_amount, status AS current_status FROM withdrawals WHERE id = $1", [id]);
-        if (withdrawalRes.rows.length === 0) throw new Error('Saque não encontrado.');
-        const { user_id, requested_amount, actual_amount, current_status } = withdrawalRes.rows[0];
-        if (current_status !== 'Pendente') throw new Error('Saque já processado.');
-        await client.query("UPDATE withdrawals SET status = $1 WHERE id = $2", [status, id]);
-        if (status === 'Rejeitado') 
-         await client.query(`UPDATE users 
-     SET balance = COALESCE(balance, 0) + $1, 
-         balance_withdraw = COALESCE(balance_withdraw, 0) + $1 
-     WHERE id = $2`,
-    [requested_amount, user_id]
-);
 
-        
+        const withdrawalRes = await client.query(
+            "SELECT user_id, requested_amount, status AS current_status FROM withdrawals WHERE id = $1",
+            [id]
+        );
+
+        if (withdrawalRes.rows.length === 0) throw new Error('Saque não encontrado.');
+        const { user_id, requested_amount, current_status } = withdrawalRes.rows[0];
+
+        if (current_status !== 'Pendente') throw new Error('Saque já processado.');
+
+        // Atualiza status do saque
+        await client.query("UPDATE withdrawals SET status = $1 WHERE id = $2", [status, id]);
+
+        if (status === 'Rejeitado') {
+            // devolve o valor para o saldo do usuário
+            await client.query(`
+                UPDATE users 
+                SET balance = COALESCE(balance, 0) + $1, 
+                    balance_withdraw = COALESCE(balance_withdraw, 0) + $1 
+                WHERE id = $2
+            `, [requested_amount, user_id]);
+        }
+
+        if (status === 'Aprovado') {
+            // 🔥 dá permissão para o usuário criar 1 post no blog
+            await client.query(`
+                INSERT INTO user_blog_limit (user_id, allowed_posts)
+                VALUES ($1, 1)
+                ON CONFLICT (user_id) DO UPDATE
+                SET allowed_posts = user_blog_limit.allowed_posts + 1
+            `, [user_id]);
+        }
+
         await client.query('COMMIT');
         res.status(200).json({ message: `Saque ${status.toLowerCase()} com sucesso.` });
     } catch (err) {
@@ -820,6 +843,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
 
