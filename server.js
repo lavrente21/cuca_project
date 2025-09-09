@@ -760,11 +760,15 @@ app.post('/api/blog/posts', authenticateToken, async (req, res) => {
     if (!content) return res.status(400).json({ message: 'Conteúdo é obrigatório.' });
 
     try {
-        const limitRes = await pool.query("SELECT allowed_posts FROM user_blog_limit WHERE user_id = $1", [req.userId]);
-        const allowedPosts = limitRes.rows[0]?.allowed_posts || 0;
-        if (allowedPosts <= 0) {
-            return res.status(403).json({ message: 'Você não tem posts disponíveis. Faça um saque para liberar publicações.' });
-        }
+      const saque = await pool.query(
+  "SELECT * FROM withdrawals WHERE user_id = $1 AND status = 'Aprovado' LIMIT 1",
+  [userId]
+);
+
+if (saque.rows.length === 0) {
+  return res.status(403).json({ message: "Você não tem permissão para postar. Faça um saque aprovado primeiro." });
+}
+
 
         const postId = uuidv4();
         await pool.query(
@@ -843,6 +847,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
 
