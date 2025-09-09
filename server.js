@@ -757,26 +757,32 @@ app.post('/api/blog/posts', authenticateToken, async (req, res) => {
     const { content, image_url } = req.body;
     const title = "SAQUE"; // 🔥 título fixo
 
-    if (!content) return res.status(400).json({ message: 'Conteúdo é obrigatório.' });
+    if (!content) {
+        return res.status(400).json({ message: 'Conteúdo é obrigatório.' });
+    }
 
     try {
-      const saque = await pool.query(
-  "SELECT * FROM withdrawals WHERE user_id = $1 AND status = 'Aprovado' LIMIT 1",
-  [userId]
-);
+        // 1️⃣ Verifica se tem posts disponíveis
+        const limitRes = await pool.query(
+            "SELECT allowed_posts FROM user_blog_limit WHERE user_id = $1",
+            [req.userId]
+        );
 
-if (saque.rows.length === 0) {
-  return res.status(403).json({ message: "Você não tem permissão para postar. Faça um saque aprovado primeiro." });
-}
+        if (limitRes.rows.length === 0 || parseInt(limitRes.rows[0].allowed_posts) <= 0) {
+            return res.status(403).json({
+                message: "Você não tem permissão para postar. Faça um saque aprovado primeiro."
+            });
+        }
 
-
+        // 2️⃣ Cria o post
         const postId = uuidv4();
         await pool.query(
-            `INSERT INTO blog_posts (id, author_id, title, content, image_url, is_approved)
-             VALUES ($1, $2, $3, $4, $5, false)`,
+            `INSERT INTO blog_posts (id, author_id, title, content, image_url, is_approved, published_at)
+             VALUES ($1, $2, $3, $4, $5, false, NOW())`,
             [postId, req.userId, title, content, image_url || null]
         );
 
+        // 3️⃣ Decrementa o contador de posts disponíveis
         await pool.query(
             "UPDATE user_blog_limit SET allowed_posts = allowed_posts - 1 WHERE user_id = $1",
             [req.userId]
@@ -847,6 +853,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
 
