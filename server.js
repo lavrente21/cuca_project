@@ -291,13 +291,13 @@ app.post('/api/invest', authenticateToken, async (req, res) => {
             throw new Error(`O valor do investimento deve estar entre ${pkg.min_investment} e ${pkg.max_investment}`);
         }
 
-        // 3️⃣ Verifica saldo do usuário
-        const userRes = await client.query(
-            "SELECT balance FROM users WHERE id = $1",
-            [req.userId]
-        );
-        const user = userRes.rows[0];
-        if (!user || user.balance < amount) throw new Error("Saldo insuficiente.");
+        // 3️⃣ Verifica saldo de recarga
+const userRes = await client.query(
+    "SELECT balance_recharge FROM users WHERE id = $1",
+    [req.userId]
+);
+const user = userRes.rows[0];
+if (!user || user.balance_recharge < amount) throw new Error("Saldo de recarga insuficiente.");
 
         // 4️⃣ Calcula ganho diário
         const dailyEarning = parseFloat((amount * (pkg.daily_return_rate / 100)).toFixed(2));
@@ -312,10 +312,14 @@ app.post('/api/invest', authenticateToken, async (req, res) => {
         );
 
         // 6️⃣ Desconta saldo do usuário
-        await client.query(
-            "UPDATE users SET balance = balance - $1, balance_recharge = balance_recharge - $1 WHERE id = $2",
-            [amount, req.userId]
-        );
+       await client.query(
+    "UPDATE users 
+     SET balance = balance - $1, 
+         balance_recharge = balance_recharge - $1 
+     WHERE id = $2",
+    [amount, req.userId]
+);
+
 
         await client.query('COMMIT');
         res.status(200).json({ message: 'Investimento criado com sucesso!', investmentId });
@@ -1008,6 +1012,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
 
