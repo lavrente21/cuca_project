@@ -465,6 +465,61 @@ app.post('/api/withdraw', authenticateToken, async (req, res) => {
     }
 });
 
+// -------------------- HISTÓRICO DE INVESTIMENTOS --------------------
+app.get('/api/investments/history', authenticateToken, async (req, res) => {
+    try {
+        const result = await pool.query(
+            `SELECT ui.id,
+                    ui.amount,
+                    ui.daily_earning,
+                    ui.days_remaining,
+                    ui.status,
+                    ui.created_at,
+                    p.name AS package_name,
+                    p.duration_days,
+                    p.daily_return_rate
+             FROM user_investments ui
+             JOIN investment_packages p ON ui.package_id = p.id
+             WHERE ui.user_id = $1
+             ORDER BY ui.created_at DESC`,
+            [req.userId]
+        );
+
+        // Monta o histórico no formato esperado pelo frontend
+        const history = [];
+
+        result.rows.forEach(row => {
+            // Registro da compra
+            history.push({
+                id: row.id,
+                type: 'investment',
+                amount: parseFloat(row.amount),
+                packageName: row.package_name,
+                roi: `${row.daily_return_rate}% por ${row.duration_days} dias`,
+                status: row.status,
+                timestamp: row.created_at
+            });
+
+            // Registros de retorno diário (se quiser detalhar no histórico)
+            for (let i = 0; i < row.duration_days; i++) {
+                history.push({
+                    id: `${row.id}-day-${i + 1}`,
+                    type: 'investment',
+                    amount: parseFloat(row.daily_earning),
+                    packageName: row.package_name,
+                    roi: `Retorno diário (${row.daily_return_rate}%)`,
+                    status: 'Pago',
+                    timestamp: new Date(new Date(row.created_at).getTime() + i * 86400000) // +i dias
+                });
+            }
+        });
+
+        res.json({ history });
+    } catch (err) {
+        console.error("Erro ao buscar histórico de investimentos:", err);
+        res.status(500).json({ message: "Erro ao buscar histórico de investimentos." });
+    }
+});
 
 // -------------------- VINCULAR CONTA --------------------
 app.post('/api/link-account', authenticateToken, async (req, res) => {
@@ -1013,6 +1068,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
 
