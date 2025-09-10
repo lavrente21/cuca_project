@@ -485,11 +485,10 @@ app.get('/api/investments/history', authenticateToken, async (req, res) => {
             [req.userId]
         );
 
-        // Monta o histórico no formato esperado pelo frontend
         const history = [];
 
         result.rows.forEach(row => {
-            // Registro da compra
+            // Compra do pacote
             history.push({
                 id: row.id,
                 type: 'investment',
@@ -500,8 +499,16 @@ app.get('/api/investments/history', authenticateToken, async (req, res) => {
                 timestamp: row.created_at
             });
 
-            // Registros de retorno diário (se quiser detalhar no histórico)
-            for (let i = 0; i < row.duration_days; i++) {
+            // Quantos dias já se passaram desde a compra
+            const now = new Date();
+            const createdAt = new Date(row.created_at);
+            const diffMs = now - createdAt;
+            const daysPassed = Math.floor(diffMs / 86400000); // 24h = 86400000ms
+
+            // Quantos retornos já podem ser exibidos
+            const daysToShow = Math.min(daysPassed, row.duration_days);
+
+            for (let i = 0; i < daysToShow; i++) {
                 history.push({
                     id: `${row.id}-day-${i + 1}`,
                     type: 'investment',
@@ -509,7 +516,7 @@ app.get('/api/investments/history', authenticateToken, async (req, res) => {
                     packageName: row.package_name,
                     roi: `Retorno diário (${row.daily_return_rate}%)`,
                     status: 'Pago',
-                    timestamp: new Date(new Date(row.created_at).getTime() + i * 86400000) // +i dias
+                    timestamp: new Date(createdAt.getTime() + (i + 1) * 86400000) // só aparece após 24h
                 });
             }
         });
@@ -520,6 +527,7 @@ app.get('/api/investments/history', authenticateToken, async (req, res) => {
         res.status(500).json({ message: "Erro ao buscar histórico de investimentos." });
     }
 });
+
 
 // -------------------- VINCULAR CONTA --------------------
 app.post('/api/link-account', authenticateToken, async (req, res) => {
@@ -1068,6 +1076,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
 
