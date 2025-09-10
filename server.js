@@ -269,17 +269,20 @@ app.post('/api/deposit', authenticateToken, upload.single('file'), async (req, r
 });
 
 // -------------------- INVESTIR EM PACOTE --------------------
+// -------------------- INVESTIR EM PACOTE --------------------
 app.post('/api/invest', authenticateToken, async (req, res) => {
-    const { packageId, amount } = req.body;
-    if (!packageId || !amount) {
-        return res.status(400).json({ message: 'Pacote e valor são obrigatórios.' });
+    const { packageId, amount: amountRaw } = req.body;
+    const amount = parseFloat(amountRaw);
+
+    if (!packageId || isNaN(amount) || amount <= 0) {
+        return res.status(400).json({ message: 'Pacote e valor válidos são obrigatórios.' });
     }
 
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
 
-        // 1️⃣ Buscar pacote
+        // 1) Buscar pacote
         const pkgRes = await client.query(
             "SELECT daily_return_rate, duration_days, min_investment, max_investment, status FROM investment_packages WHERE id = $1",
             [packageId]
@@ -288,32 +291,30 @@ app.post('/api/invest', authenticateToken, async (req, res) => {
         const pkg = pkgRes.rows[0];
         if (pkg.status !== 'Ativo') throw new Error("Pacote não está ativo.");
 
-        // 2️⃣ Verifica limites de investimento
-        if (amount < pkg.min_investment || amount > pkg.max_investment) {
+        // 2) Verifica limites do pacote
+        if (amount < parseFloat(pkg.min_investment) || amount > parseFloat(pkg.max_investment)) {
             throw new Error(`O valor do investimento deve estar entre ${pkg.min_investment} e ${pkg.max_investment}`);
         }
 
-        // 3️⃣ Verifica saldo de recarga
-        const userRes = await client.query(
-            "SELECT balance_recharge FROM users WHERE id = $1",
-            [req.userId]
-        );
+        // 3) Verifica saldo_recharge do usuário
+        const userRes = await client.query("SELECT balance_recharge FROM users WHERE id = $1 FOR UPDATE", [req.userId]);
         const user = userRes.rows[0];
-        if (!user || user.balance_recharge < amount) throw new Error("Saldo de recarga insuficiente.");
+        if (!user) throw new Error("Usuário não encontrado.");
+        if (parseFloat(user.balance_recharge) < amount) throw new Error("Saldo de recarga insuficiente.");
 
-        // 4️⃣ Calcula ganho diário
-        const dailyEarning = parseFloat((amount * (pkg.daily_return_rate / 100)).toFixed(2));
+        // 4) Calcula ganho diário
+        const dailyEarning = parseFloat((amount * (parseFloat(pkg.daily_return_rate) / 100)).toFixed(2));
 
-        // 5️⃣ Inserir investimento
+        // 5) Inserir investimento
         const investmentId = uuidv4();
         await client.query(
-            `INSERT INTO user_investments 
-             (id, user_id, package_id, amount, daily_earning, days_remaining, status, created_at) 
+            `INSERT INTO user_investments
+             (id, user_id, package_id, amount, daily_earning, days_remaining, status, created_at)
              VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
-            [investmentId, req.userId, packageId, amount, dailyEarning, pkg.duration_days, 'Ativo']
+            [investmentId, req.userId, packageId, amount, dailyEarning, pkg.duration_days, 'ativo']
         );
 
-        // 6️⃣ Desconta saldo de recarga
+        // 6) Desconta apenas do balance_recharge (evita desconto duplicado)
         await client.query(
             "UPDATE users SET balance_recharge = balance_recharge - $1 WHERE id = $2",
             [amount, req.userId]
@@ -322,13 +323,14 @@ app.post('/api/invest', authenticateToken, async (req, res) => {
         await client.query('COMMIT');
         res.status(200).json({ message: 'Investimento criado com sucesso!', investmentId });
     } catch (err) {
-        await client.query('ROLLBACK');
+        try { await client.query('ROLLBACK'); } catch (e) { /* ignore */ }
         console.error('Erro ao criar investimento:', err);
         res.status(500).json({ message: 'Erro ao criar investimento.', error: err.message });
     } finally {
         client.release();
     }
 });
+
 
 // -------------------- INVESTIMENTOS DO USUÁRIO --------------------
 app.get('/api/investments/active', authenticateToken, async (req, res) => {
@@ -1011,6 +1013,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
 
