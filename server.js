@@ -1,4 +1,4 @@
-// backend/server.js
+ // backend/server.js
 // Este ficheiro implementa o backend da aplicação Cuca usando Node.js, Express.js e PostgreSQL.
 
 require('dotenv').config();
@@ -267,6 +267,103 @@ app.post('/api/deposit', authenticateToken, upload.single('file'), async (req, r
         if (client) client.release();
     }
 });
+
+// -------------------- INVESTIR EM PACOTE --------------------
+app.post('/api/invest', authenticateToken, async (req, res) => {
+    const { packageId, amount } = req.body;
+    if (!packageId || !amount) return res.status(400).json({ message: 'Pacote e valor são obrigatórios.' });
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        // 1️⃣ Buscar pacote
+        const pkgRes = await client.query(
+            "SELECT daily_return_rate, duration_days, min_investment, max_investment, status FROM investment_packages WHERE id = $1",
+            [packageId]
+        );
+        if (pkgRes.rows.length === 0) throw new Error("Pacote não encontrado.");
+        const pkg = pkgRes.rows[0];
+        if (pkg.status !== 'Ativo') throw new Error("Pacote não está ativo.");
+
+        // 2️⃣ Verifica limites de investimento
+        if (amount < pkg.min_investment || amount > pkg.max_investment) {
+            throw new Error(`O valor do investimento deve estar entre ${pkg.min_investment} e ${pkg.max_investment}`);
+        }
+
+        // 3️⃣ Verifica saldo do usuário
+        const userRes = await client.query(
+            "SELECT balance FROM users WHERE id = $1",
+            [req.userId]
+        );
+        const user = userRes.rows[0];
+        if (!user || user.balance < amount) throw new Error("Saldo insuficiente.");
+
+        // 4️⃣ Calcula ganho diário
+        const dailyEarning = parseFloat((amount * (pkg.daily_return_rate / 100)).toFixed(2));
+
+        // 5️⃣ Inserir investimento
+        const investmentId = uuidv4();
+        await client.query(
+            `INSERT INTO user_investments
+            (id, user_id, package_id, amount, daily_earning, days_remaining, status)
+            VALUES ($1, $2, $3, $4, $5, $6, 'ativo')`,
+            [investmentId, req.userId, packageId, amount, dailyEarning, pkg.duration_days]
+        );
+
+        // 6️⃣ Desconta saldo do usuário
+        await client.query(
+            "UPDATE users SET balance = balance - $1, balance_recharge = balance_recharge - $1 WHERE id = $2",
+            [amount, req.userId]
+        );
+
+        await client.query('COMMIT');
+        res.status(200).json({ message: 'Investimento criado com sucesso!', investmentId });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('Erro ao criar investimento:', err);
+        res.status(500).json({ message: 'Erro ao criar investimento.', error: err.message });
+    } finally {
+        client.release();
+    }
+});
+// -------------------- INVESTIMENTOS DO USUÁRIO --------------------
+app.get('/api/investments/active', authenticateToken, async (req, res) => {
+    try {
+        const result = await pool.query(
+            `SELECT ui.id,
+                    ui.package_id,
+                    ip.name AS package_name,
+                    ui.amount,
+                    ui.daily_earning,
+                    ui.days_remaining,
+                    ui.status,
+                    ui.created_at
+             FROM user_investments ui
+             LEFT JOIN investment_packages ip ON ui.package_id = ip.id
+             WHERE ui.user_id = $1
+             ORDER BY ui.created_at DESC`,
+            [req.userId]
+        );
+
+        const investments = result.rows.map(inv => ({
+            id: inv.id,
+            packageId: inv.package_id,
+            packageName: inv.package_name,
+            amount: parseFloat(inv.amount),
+            dailyEarning: parseFloat(inv.daily_earning),
+            daysRemaining: inv.days_remaining,
+            status: inv.status,
+            createdAt: inv.created_at ? inv.created_at.toISOString() : null
+        }));
+
+        res.status(200).json({ investments });
+    } catch (err) {
+        console.error('Erro ao buscar investimentos ativos do usuário:', err);
+        res.status(500).json({ message: 'Erro interno ao obter investimentos.', error: err.message });
+    }
+});
+
 
 
 // -------------------- LISTAR PACOTES (PÚBLICO/FRONTEND) --------------------
@@ -847,6 +944,48 @@ app.get('/api/admin/blog/posts', authenticateToken, authenticateAdmin, async (re
 });
 
 
+const cron = require('node-cron');
+
+// Executa todo dia à meia-noite
+cron.schedule('0 0 * * *', async () => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        const res = await client.query(
+            "SELECT id, user_id, daily_earning, days_remaining FROM user_investments WHERE status='ativo'"
+        );
+
+        for (const inv of res.rows) {
+            // Adiciona ganho diário ao saldo de saque
+            await client.query(
+                `UPDATE users
+                 SET balance_withdraw = COALESCE(balance_withdraw,0) + $1,
+                     balance = COALESCE(balance,0) + $1
+                 WHERE id = $2`,
+                [inv.daily_earning, inv.user_id]
+            );
+
+            // Decrementa dias restantes
+            const newDays = inv.days_remaining - 1;
+            const status = newDays <= 0 ? 'concluído' : 'ativo';
+            await client.query(
+                `UPDATE user_investments
+                 SET days_remaining = $1, status = $2
+                 WHERE id = $3`,
+                [Math.max(newDays,0), status, inv.id]
+            );
+        }
+
+        await client.query('COMMIT');
+        console.log('Rendimentos diários atualizados ✅');
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('Erro ao atualizar rendimentos diários:', err);
+    } finally {
+        client.release();
+    }
+});
 
 
 // ==============================================================================
@@ -869,6 +1008,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
 
