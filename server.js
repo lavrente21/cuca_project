@@ -268,6 +268,21 @@ app.post('/api/deposit', authenticateToken, upload.single('file'), async (req, r
     }
 });
 
+
+// -------------------- LISTAR PACOTES (PÚBLICO/FRONTEND) --------------------
+app.get('/api/packages', async (req, res) => {
+    try {
+        const result = await pool.query(
+            "SELECT id, name, description, min_investment, max_investment, daily_return_rate, duration_days, status FROM investment_packages WHERE status = 'Ativo' ORDER BY created_at DESC"
+        );
+        res.status(200).json({ packages: result.rows });
+    } catch (err) {
+        console.error("Erro ao listar pacotes (frontend):", err);
+        res.status(500).json({ error: "Erro ao listar pacotes" });
+    }
+});
+
+
 // -------------------- SAQUE --------------------
 app.post('/api/withdraw', authenticateToken, async (req, res) => {
     const { withdrawAmount: amountStr, transactionPassword } = req.body;
@@ -347,6 +362,7 @@ app.post('/api/withdraw', authenticateToken, async (req, res) => {
         if (client) client.release();
     }
 });
+
 
 // -------------------- VINCULAR CONTA --------------------
 app.post('/api/link-account', authenticateToken, async (req, res) => {
@@ -853,6 +869,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
 
