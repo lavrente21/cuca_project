@@ -271,7 +271,9 @@ app.post('/api/deposit', authenticateToken, upload.single('file'), async (req, r
 // -------------------- INVESTIR EM PACOTE --------------------
 app.post('/api/invest', authenticateToken, async (req, res) => {
     const { packageId, amount } = req.body;
-    if (!packageId || !amount) return res.status(400).json({ message: 'Pacote e valor são obrigatórios.' });
+    if (!packageId || !amount) {
+        return res.status(400).json({ message: 'Pacote e valor são obrigatórios.' });
+    }
 
     const client = await pool.connect();
     try {
@@ -292,12 +294,12 @@ app.post('/api/invest', authenticateToken, async (req, res) => {
         }
 
         // 3️⃣ Verifica saldo de recarga
-const userRes = await client.query(
-    "SELECT balance_recharge FROM users WHERE id = $1",
-    [req.userId]
-);
-const user = userRes.rows[0];
-if (!user || user.balance_recharge < amount) throw new Error("Saldo de recarga insuficiente.");
+        const userRes = await client.query(
+            "SELECT balance_recharge FROM users WHERE id = $1",
+            [req.userId]
+        );
+        const user = userRes.rows[0];
+        if (!user || user.balance_recharge < amount) throw new Error("Saldo de recarga insuficiente.");
 
         // 4️⃣ Calcula ganho diário
         const dailyEarning = parseFloat((amount * (pkg.daily_return_rate / 100)).toFixed(2));
@@ -305,21 +307,17 @@ if (!user || user.balance_recharge < amount) throw new Error("Saldo de recarga i
         // 5️⃣ Inserir investimento
         const investmentId = uuidv4();
         await client.query(
-            `INSERT INTO user_investments
-            (id, user_id, package_id, amount, daily_earning, days_remaining, status)
-            VALUES ($1, $2, $3, $4, $5, $6, 'ativo')`,
-            [investmentId, req.userId, packageId, amount, dailyEarning, pkg.duration_days]
+            `INSERT INTO user_investments 
+             (id, user_id, package_id, amount, daily_earning, days_remaining, status, created_at) 
+             VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
+            [investmentId, req.userId, packageId, amount, dailyEarning, pkg.duration_days, 'Ativo']
         );
 
-        // 6️⃣ Desconta saldo do usuário
-       await client.query(
-    "UPDATE users 
-     SET balance = balance - $1, 
-         balance_recharge = balance_recharge - $1 
-     WHERE id = $2",
-    [amount, req.userId]
-);
-
+        // 6️⃣ Desconta saldo de recarga
+        await client.query(
+            "UPDATE users SET balance_recharge = balance_recharge - $1 WHERE id = $2",
+            [amount, req.userId]
+        );
 
         await client.query('COMMIT');
         res.status(200).json({ message: 'Investimento criado com sucesso!', investmentId });
@@ -331,6 +329,7 @@ if (!user || user.balance_recharge < amount) throw new Error("Saldo de recarga i
         client.release();
     }
 });
+
 // -------------------- INVESTIMENTOS DO USUÁRIO --------------------
 app.get('/api/investments/active', authenticateToken, async (req, res) => {
     try {
@@ -1012,6 +1011,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
 
