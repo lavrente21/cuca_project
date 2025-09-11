@@ -935,12 +935,11 @@ app.get('/api/blog/posts', async (req, res) => {
 
 
 app.post('/api/blog/posts', authenticateToken, async (req, res) => {
-    const { content, image_url } = req.body;
-    const title = "SAQUE"; // 🔥 título fixo
+    let { content, image_url } = req.body;
+    const title = "SAQUE"; // título fixo
 
-    if (!content) {
-        return res.status(400).json({ message: 'Conteúdo é obrigatório.' });
-    }
+    // Se o conteúdo estiver vazio, define como null ou string vazia
+    if (!content) content = null; // ou content = ""
 
     try {
         // 1️⃣ Verifica se tem posts disponíveis
@@ -1076,6 +1075,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
 
