@@ -334,16 +334,59 @@ app.post('/api/invest', authenticateToken, async (req, res) => {
 
 // -------------------- INVESTIMENTOS DO USUÁRIO --------------------
 app.get('/api/investments/active', authenticateToken, async (req, res) => {
+    const client = await pool.connect();
     try {
-        const result = await pool.query(
-            `SELECT ui.id,
-                    ui.package_id,
-                    ip.name AS package_name,
-                    ui.amount,
-                    ui.daily_earning,
-                    ui.days_remaining,
-                    ui.status,
-                    ui.created_at
+        await client.query('BEGIN');
+
+        const investmentsRes = await client.query(
+            `SELECT id, amount, daily_earning, days_remaining, created_at, status
+             FROM user_investments
+             WHERE user_id = $1 AND status = 'ativo'`,
+            [req.userId]
+        );
+
+        for (const inv of investmentsRes.rows) {
+            const now = new Date();
+            const createdAt = new Date(inv.created_at);
+            const daysPassed = Math.floor((now - createdAt) / 86400000);
+            const totalDays = inv.days_remaining;
+
+            // Quantos dias já deviam ter sido pagos
+            const daysToCredit = Math.min(daysPassed, totalDays);
+
+            // Quantos já foram pagos
+            const alreadyPaidRes = await client.query(
+                "SELECT COUNT(*) FROM investment_earnings WHERE investment_id = $1",
+                [inv.id]
+            );
+            const alreadyPaid = parseInt(alreadyPaidRes.rows[0].count, 10);
+
+            if (daysToCredit > alreadyPaid) {
+                const newPayments = daysToCredit - alreadyPaid;
+                const totalCredit = inv.daily_earning * newPayments;
+
+                // Atualiza saldo de saque
+                await client.query(
+                    "UPDATE users SET balance_withdraw = balance_withdraw + $1 WHERE id = $2",
+                    [totalCredit, req.userId]
+                );
+
+                // Registra cada ganho
+                for (let i = 0; i < newPayments; i++) {
+                    await client.query(
+                        "INSERT INTO investment_earnings (id, investment_id, amount, paid_at) VALUES ($1, $2, $3, NOW())",
+                        [uuidv4(), inv.id, inv.daily_earning]
+                    );
+                }
+            }
+        }
+
+        await client.query('COMMIT');
+
+        // Retorna os investimentos
+        const result = await client.query(
+            `SELECT ui.id, ui.package_id, ip.name AS package_name, ui.amount,
+                    ui.daily_earning, ui.days_remaining, ui.status, ui.created_at
              FROM user_investments ui
              LEFT JOIN investment_packages ip ON ui.package_id = ip.id
              WHERE ui.user_id = $1
@@ -364,10 +407,14 @@ app.get('/api/investments/active', authenticateToken, async (req, res) => {
 
         res.status(200).json({ investments });
     } catch (err) {
+        await client.query('ROLLBACK');
         console.error('Erro ao buscar investimentos ativos do usuário:', err);
         res.status(500).json({ message: 'Erro interno ao obter investimentos.', error: err.message });
+    } finally {
+        client.release();
     }
 });
+
 
 
 
@@ -384,95 +431,59 @@ app.get('/api/packages', async (req, res) => {
     }
 });
 
+// -------------------- HISTÓRICOS --------------------
 
-// -------------------- SAQUE --------------------
-app.post('/api/withdraw', authenticateToken, async (req, res) => {
-    const { withdrawAmount: amountStr, transactionPassword } = req.body;
-    let client;
-    if (!amountStr || !transactionPassword) {
-        return res.status(400).json({ error: 'Todos os campos são obrigatórios para o saque.' });
-    }
-    const amount = parseFloat(amountStr);
-    if (isNaN(amount) || amount <= 0) {
-        return res.status(400).json({ error: 'Valor de saque inválido.' });
-    }
+// Histórico de Saques
+app.get('/api/withdrawals/history', authenticateToken, async (req, res) => {
     try {
-        const userRes = await pool.query(
-            "SELECT transaction_password_hash, balance_withdraw, balance, linked_account_number FROM users WHERE id = $1",
+        const result = await pool.query(
+            "SELECT requested_amount, fee, actual_amount, status, timestamp, account_number_used FROM withdrawals WHERE user_id = $1 ORDER BY timestamp DESC",
             [req.userId]
         );
-        const user = userRes.rows[0];
-        if (!user) {
-            return res.status(404).json({ error: 'Utilizador não encontrado.' });
-        }
-        if (!(await bcrypt.compare(transactionPassword, user.transaction_password_hash))) {
-            return res.status(401).json({ error: 'Senha de transação incorreta.' });
-        }
-        if (!user.linked_account_number) {
-            return res.status(400).json({ error: 'Nenhuma conta vinculada para saque. Por favor, vincule uma conta primeiro.' });
-        }
-        if (amount > parseFloat(user.balance_withdraw)) {
-            return res.status(400).json({ error: 'Saldo de saque insuficiente.' });
-        }
-        const fee = amount * (parseFloat(process.env.WITHDRAW_FEE_PERCENTAGE || '0.05'));
-        const actualAmount = amount - fee;
-
-        client = await pool.connect();
-        await client.query('BEGIN');
-
-        await client.query(
-            "UPDATE users SET balance_withdraw = balance_withdraw - $1, balance = balance - $2 WHERE id = $3",
-            [amount, amount, req.userId]
-        );
-
-        const withdrawalId = uuidv4();
-        const sqlWithdrawal = `
-            INSERT INTO withdrawals (id, user_id, requested_amount, fee, actual_amount, status, timestamp, account_number_used)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-        `;
-        await client.query(sqlWithdrawal, [
-            withdrawalId,
-            req.userId,
-            amount,
-            fee,
-            actualAmount,
-            'Pendente',
-            new Date(),
-            user.linked_account_number
-        ]);
-
-        await client.query('COMMIT');
-
-        const updatedBalanceRes = await pool.query(
-            "SELECT balance_withdraw FROM users WHERE id = $1",
-            [req.userId]
-        );
-        const updatedBalanceWithdraw = updatedBalanceRes.rows[0].balance_withdraw;
-        console.log(`Saque de Kz ${amount} solicitado pelo utilizador ${req.userId}. Saldo Saque Restante: ${updatedBalanceWithdraw}`);
-        res.status(200).json({
-            message: 'Pedido de saque registado com sucesso!',
-            new_balance_withdraw: parseFloat(updatedBalanceWithdraw),
-            actual_amount_received: actualAmount
-        });
+        const history = result.rows.map(item => ({
+            requested_amount: parseFloat(item.requested_amount),
+            fee: parseFloat(item.fee),
+            actual_amount: parseFloat(item.actual_amount),
+            status: item.status,
+            timestamp: item.timestamp ? item.timestamp.toISOString() : null,
+            account_number_used: item.account_number_used
+        }));
+        res.status(200).json({ history: history });
     } catch (err) {
-        if (client) {
-            try { await client.query('ROLLBACK'); } catch (e) { /* ignore */ }
-        }
-        console.error('Erro no saque:', err);
-        res.status(500).json({ error: 'Erro interno do servidor ao processar saque.', message: err.message });
-    } finally {
-        if (client) client.release();
+        console.error('Erro ao obter histórico de saques:', err);
+        res.status(500).json({ error: 'Erro interno do servidor ao carregar histórico.', message: err.message });
     }
 });
 
-// -------------------- HISTÓRICO DE INVESTIMENTOS --------------------
-app.get('/api/investments/history', authenticateToken, async (req, res) => {
+// Histórico de Depósitos
+app.get('/api/deposits/history', authenticateToken, async (req, res) => {
     try {
         const result = await pool.query(
+            "SELECT id, amount, status, timestamp, receipt_filename FROM deposits WHERE user_id = $1 ORDER BY timestamp DESC",
+            [req.userId]
+        );
+        const history = result.rows.map(item => ({
+            id: item.id,
+            amount: parseFloat(item.amount),
+            status: item.status,
+            timestamp: item.timestamp ? item.timestamp.toISOString() : null,
+            receipt_filename: item.receipt_filename
+        }));
+        res.status(200).json({ history: history });
+    } catch (err) {
+        console.error('Erro ao obter histórico de depósitos:', err);
+        res.status(500).json({ error: 'Erro interno do servidor ao carregar histórico de depósitos.', message: err.message });
+    }
+});
+
+// Histórico de Investimentos e Ganhos
+app.get('/api/investments/history', authenticateToken, async (req, res) => {
+    try {
+        // Busca os investimentos originais do utilizador
+        const investmentsResult = await pool.query(
             `SELECT ui.id,
                     ui.amount,
                     ui.daily_earning,
-                    ui.days_remaining,
                     ui.status,
                     ui.created_at,
                     p.name AS package_name,
@@ -485,10 +496,21 @@ app.get('/api/investments/history', authenticateToken, async (req, res) => {
             [req.userId]
         );
 
+        // Busca todos os ganhos diários já creditados na tabela de ganhos
+        const earningsResult = await pool.query(
+            `SELECT ie.amount, ie.paid_at, p.name AS package_name, ui.daily_return_rate
+             FROM investment_earnings ie
+             JOIN user_investments ui ON ie.investment_id = ui.id
+             JOIN investment_packages p ON ui.package_id = p.id
+             WHERE ui.user_id = $1
+             ORDER BY ie.paid_at DESC`,
+            [req.userId]
+        );
+
         const history = [];
 
-        result.rows.forEach(row => {
-            // 1) Compra do pacote (registro inicial)
+        // Adiciona cada investimento ao histórico
+        investmentsResult.rows.forEach(row => {
             history.push({
                 id: row.id,
                 type: 'investment',
@@ -498,46 +520,30 @@ app.get('/api/investments/history', authenticateToken, async (req, res) => {
                 status: row.status,
                 timestamp: row.created_at
             });
-
-            // 2) Calcular quantos retornos já estão liberados
-            const now = new Date();
-            const createdAt = new Date(row.created_at);
-            const diffMs = now - createdAt;
-
-            // só libera um ganho se já passaram 24h
-            const daysPassed = Math.floor(diffMs / 86400000);
-
-            // não pode mostrar mais do que a duração do pacote
-            const daysToShow = Math.min(daysPassed, row.duration_days);
-
-            // 3) Adicionar cada retorno diário liberado
-            for (let i = 0; i < daysToShow; i++) {
-                const payDate = new Date(createdAt.getTime() + (i + 1) * 86400000);
-
-                // garante que só aparece se a data já passou
-                if (payDate <= now) {
-                    history.push({
-                        id: `${row.id}-day-${i + 1}`,
-                        type: 'earning',
-                        amount: parseFloat(row.daily_earning),
-                        packageName: row.package_name,
-                        roi: `Retorno diário (${row.daily_return_rate}%)`,
-                        status: 'Pago',
-                        timestamp: payDate
-                    });
-                }
-            }
         });
+
+        // Adiciona cada ganho já pago ao histórico
+        earningsResult.rows.forEach(earning => {
+            history.push({
+                id: `earning-${earning.paid_at.getTime()}-${Math.random()}`,
+                type: 'earning',
+                amount: parseFloat(earning.amount),
+                packageName: earning.package_name,
+                roi: `Retorno diário (${earning.daily_return_rate}%)`,
+                status: 'Pago',
+                timestamp: earning.paid_at
+            });
+        });
+
+        // Ordena o histórico combinado pela data
+        history.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
         res.json({ history });
     } catch (err) {
         console.error("Erro ao buscar histórico de investimentos:", err);
         res.status(500).json({ message: "Erro ao buscar histórico de investimentos." });
     }
-});
-
-
-
+}); 
 // -------------------- VINCULAR CONTA --------------------
 app.post('/api/link-account', authenticateToken, async (req, res) => {
     const { bankName, accountNumber, accountHolder, transactionPassword } = req.body;
