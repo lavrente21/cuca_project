@@ -1116,11 +1116,7 @@ app.post('/api/admin/process-earnings', authenticateToken, authenticateAdmin, as
 
 
 
-// Agendamento diário às 00:00
-cron.schedule("0 0 * * *", async () => {
-    console.log("⏰ Rodando job diário de ganhos...");
-    await processDailyEarnings();
-});
+
 
 
 // ==============================================================================
@@ -1143,5 +1139,6 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
