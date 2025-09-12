@@ -1114,6 +1114,13 @@ app.post('/api/admin/process-earnings', authenticateToken, authenticateAdmin, as
 });
 
 
+import cron from "node-cron";
+
+// Agendamento diário às 00:00
+cron.schedule("0 0 * * *", async () => {
+    console.log("⏰ Rodando job diário de ganhos...");
+    await processDailyEarnings();
+});
 
 
 // ==============================================================================
