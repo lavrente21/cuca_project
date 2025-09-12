@@ -1059,6 +1059,7 @@ app.get('/api/admin/blog/posts', authenticateToken, authenticateAdmin, async (re
 
 // -------------------- JOB DE CRÉDITO DIÁRIO --------------------
 // Função para processar e creditar ganhos diários nos investimentos ativos
+// Função para processar e creditar ganhos diários nos investimentos ativos
 async function processDailyEarnings() {
     let client;
     try {
@@ -1130,6 +1131,9 @@ async function processDailyEarnings() {
     }
 }
 
+// -------------------- CRON JOB --------------------
+// Agendamento para correr a cada minuto
+cron.schedule('* * * * *', processDailyEarnings);
 
 
 
