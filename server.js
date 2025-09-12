@@ -1062,6 +1062,62 @@ cron.schedule('0 0 * * *', async () => {
         client.release();
     }
 });
+import cron from "node-cron";
+import pool from "./db.js"; // ajusta conforme tua conexão com PostgreSQL
+
+// Executa todos os dias à meia-noite (00:00)
+cron.schedule("0 0 * * *", async () => {
+  console.log("⏰ Rodando job diário de crédito de investimentos...");
+
+  const client = await pool.connect();
+  try {
+    // Busca todos os investimentos ativos
+    const investments = await client.query(
+      `SELECT ui.id, ui.user_id, ui.daily_earning, ui.days_remaining, u.balance_withdraw
+       FROM user_investments ui
+       JOIN users u ON ui.user_id = u.id
+       WHERE ui.status = 'active'`
+    );
+
+    for (const inv of investments.rows) {
+      if (inv.days_remaining > 0) {
+        // Credita o ganho diário no saldo do usuário
+        await client.query(
+          `UPDATE users 
+           SET balance_withdraw = balance_withdraw + $1
+           WHERE id = $2`,
+          [inv.daily_earning, inv.user_id]
+        );
+
+        // Atualiza o investimento (reduz 1 dia)
+        await client.query(
+          `UPDATE user_investments 
+           SET days_remaining = days_remaining - 1
+           WHERE id = $1`,
+          [inv.id]
+        );
+
+        console.log(
+          `💰 Crédito diário: ${inv.daily_earning} para user_id=${inv.user_id}`
+        );
+      } else {
+        // Se acabou os dias, marca como finalizado
+        await client.query(
+          `UPDATE user_investments 
+           SET status = 'completed'
+           WHERE id = $1`,
+          [inv.id]
+        );
+
+        console.log(`✅ Investimento ${inv.id} concluído.`);
+      }
+    }
+  } catch (err) {
+    console.error("Erro no job diário:", err);
+  } finally {
+    client.release();
+  }
+});
 
 
 // ==============================================================================
@@ -1084,6 +1140,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
 
