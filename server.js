@@ -466,13 +466,14 @@ app.post('/api/withdraw', authenticateToken, async (req, res) => {
 });
 
 // -------------------- HISTÓRICO DE INVESTIMENTOS --------------------
+// -------------------- HISTÓRICO DE INVESTIMENTOS (CORRIGIDO) --------------------
 app.get('/api/investments/history', authenticateToken, async (req, res) => {
     try {
-        const result = await pool.query(
+        // Busca os investimentos originais do utilizador
+        const investmentsResult = await pool.query(
             `SELECT ui.id,
                     ui.amount,
                     ui.daily_earning,
-                    ui.days_remaining,
                     ui.status,
                     ui.created_at,
                     p.name AS package_name,
@@ -485,10 +486,21 @@ app.get('/api/investments/history', authenticateToken, async (req, res) => {
             [req.userId]
         );
 
+        // Busca todos os ganhos diários já creditados na tabela de ganhos
+        const earningsResult = await pool.query(
+            `SELECT ie.amount, ie.paid_at, p.name AS package_name, ui.daily_return_rate
+             FROM investment_earnings ie
+             JOIN user_investments ui ON ie.investment_id = ui.id
+             JOIN investment_packages p ON ui.package_id = p.id
+             WHERE ui.user_id = $1
+             ORDER BY ie.paid_at DESC`,
+            [req.userId]
+        );
+        
         const history = [];
 
-        result.rows.forEach(row => {
-            // 1) Compra do pacote (registro inicial)
+        // Adiciona cada investimento ao histórico
+        investmentsResult.rows.forEach(row => {
             history.push({
                 id: row.id,
                 type: 'investment',
@@ -498,36 +510,23 @@ app.get('/api/investments/history', authenticateToken, async (req, res) => {
                 status: row.status,
                 timestamp: row.created_at
             });
-
-            // 2) Calcular quantos retornos já estão liberados
-            const now = new Date();
-            const createdAt = new Date(row.created_at);
-            const diffMs = now - createdAt;
-
-            // só libera um ganho se já passaram 24h
-            const daysPassed = Math.floor(diffMs / 86400000);
-
-            // não pode mostrar mais do que a duração do pacote
-            const daysToShow = Math.min(daysPassed, row.duration_days);
-
-            // 3) Adicionar cada retorno diário liberado
-            for (let i = 0; i < daysToShow; i++) {
-                const payDate = new Date(createdAt.getTime() + (i + 1) * 86400000);
-
-                // garante que só aparece se a data já passou
-                if (payDate <= now) {
-                    history.push({
-                        id: `${row.id}-day-${i + 1}`,
-                        type: 'earning',
-                        amount: parseFloat(row.daily_earning),
-                        packageName: row.package_name,
-                        roi: `Retorno diário (${row.daily_return_rate}%)`,
-                        status: 'Pago',
-                        timestamp: payDate
-                    });
-                }
-            }
         });
+
+        // Adiciona cada ganho já pago ao histórico
+        earningsResult.rows.forEach(earning => {
+            history.push({
+                id: `earning-${earning.paid_at.getTime()}-${Math.random()}`, // ID único para o front-end
+                type: 'earning',
+                amount: parseFloat(earning.amount),
+                packageName: earning.package_name,
+                roi: `Retorno diário (${earning.daily_return_rate}%)`,
+                status: 'Pago',
+                timestamp: earning.paid_at
+            });
+        });
+
+        // Ordena o histórico combinado pela data
+        history.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
         res.json({ history });
     } catch (err) {
@@ -1130,3 +1129,4 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
