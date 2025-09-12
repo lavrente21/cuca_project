@@ -12,6 +12,7 @@ const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const fs = require('fs');
 const app = express();
+const cron = require("node-cron");
 const PORT = process.env.PORT || 5000;
 
 // ==============================================================================
@@ -1102,12 +1103,6 @@ async function processDailyEarnings() {
     }
 }
 
-// 🔥 Endpoint manual (admin chama para rodar o job)
-app.post('/api/admin/process-earnings', authenticateToken, authenticateAdmin, async (req, res) => {
-    await processDailyEarnings();
-    res.json({ message: "Processamento de ganhos concluído." });
-});
-
 
 
 
@@ -1134,7 +1129,6 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
-
 
 
 
