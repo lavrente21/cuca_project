@@ -1058,6 +1058,7 @@ app.get('/api/admin/blog/posts', authenticateToken, authenticateAdmin, async (re
 
 
 // -------------------- JOB DE CRÉDITO DIÁRIO --------------------
+// Função para processar e creditar ganhos diários nos investimentos ativos
 async function processDailyEarnings() {
     let client;
     try {
