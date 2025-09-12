@@ -488,7 +488,7 @@ app.get('/api/investments/history', authenticateToken, async (req, res) => {
         const history = [];
 
         result.rows.forEach(row => {
-            // Compra do pacote
+            // 1) Compra do pacote (registro inicial)
             history.push({
                 id: row.id,
                 type: 'investment',
@@ -499,25 +499,33 @@ app.get('/api/investments/history', authenticateToken, async (req, res) => {
                 timestamp: row.created_at
             });
 
-            // Quantos dias já se passaram desde a compra
+            // 2) Calcular quantos retornos já estão liberados
             const now = new Date();
             const createdAt = new Date(row.created_at);
             const diffMs = now - createdAt;
-            const daysPassed = Math.floor(diffMs / 86400000); // 24h = 86400000ms
 
-            // Quantos retornos já podem ser exibidos
+            // só libera um ganho se já passaram 24h
+            const daysPassed = Math.floor(diffMs / 86400000);
+
+            // não pode mostrar mais do que a duração do pacote
             const daysToShow = Math.min(daysPassed, row.duration_days);
 
+            // 3) Adicionar cada retorno diário liberado
             for (let i = 0; i < daysToShow; i++) {
-                history.push({
-                    id: `${row.id}-day-${i + 1}`,
-                    type: 'investment',
-                    amount: parseFloat(row.daily_earning),
-                    packageName: row.package_name,
-                    roi: `Retorno diário (${row.daily_return_rate}%)`,
-                    status: 'Pago',
-                    timestamp: new Date(createdAt.getTime() + (i + 1) * 86400000) // só aparece após 24h
-                });
+                const payDate = new Date(createdAt.getTime() + (i + 1) * 86400000);
+
+                // garante que só aparece se a data já passou
+                if (payDate <= now) {
+                    history.push({
+                        id: `${row.id}-day-${i + 1}`,
+                        type: 'earning',
+                        amount: parseFloat(row.daily_earning),
+                        packageName: row.package_name,
+                        roi: `Retorno diário (${row.daily_return_rate}%)`,
+                        status: 'Pago',
+                        timestamp: payDate
+                    });
+                }
             }
         });
 
@@ -527,6 +535,7 @@ app.get('/api/investments/history', authenticateToken, async (req, res) => {
         res.status(500).json({ message: "Erro ao buscar histórico de investimentos." });
     }
 });
+
 
 
 // -------------------- VINCULAR CONTA --------------------
@@ -1075,6 +1084,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
 
