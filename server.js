@@ -594,7 +594,7 @@ app.get('/api/withdrawals/history', authenticateToken, async (req, res) => {
     } catch (err) {
         console.error('Erro ao obter histórico de saques:', err);
         res.status(500).json({ error: 'Erro interno do servidor ao carregar histórico.', message: err.message });
-     /
+     
 app.get('/api/deposits/history', authenticateToken, async (req, res) => {
     try {
         const result = await pool.query(
@@ -1100,4 +1100,5 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
