@@ -468,27 +468,19 @@ app.post('/api/withdraw', authenticateToken, async (req, res) => {
 // -------------------- HISTÓRICO DE INVESTIMENTOS --------------------
 app.get('/api/investments/history', authenticateToken, async (req, res) => {
     try {
-        const result = await pool.query(
-            `SELECT ui.id,
-                    ui.amount,
-                    ui.daily_earning,
-                    ui.days_remaining,
-                    ui.status,
-                    ui.created_at,
-                    p.name AS package_name,
-                    p.duration_days,
-                    p.daily_return_rate
+        const investmentsRes = await pool.query(
+            `SELECT ui.id, ui.amount, ui.daily_earning, ui.days_remaining, ui.status, ui.created_at,
+                    p.name AS package_name, p.duration_days, p.daily_return_rate
              FROM user_investments ui
              JOIN investment_packages p ON ui.package_id = p.id
-             WHERE ui.user_id = $1
-             ORDER BY ui.created_at DESC`,
+             WHERE ui.user_id = $1`,
             [req.userId]
         );
 
         const history = [];
 
-        result.rows.forEach(row => {
-            // 1) Compra do pacote (registro inicial)
+        for (const row of investmentsRes.rows) {
+            // registrar investimento
             history.push({
                 id: row.id,
                 type: 'investment',
@@ -499,35 +491,54 @@ app.get('/api/investments/history', authenticateToken, async (req, res) => {
                 timestamp: row.created_at
             });
 
-            // 2) Calcular quantos retornos já estão liberados
+            // calcular dias já decorridos
             const now = new Date();
             const createdAt = new Date(row.created_at);
-            const diffMs = now - createdAt;
+            const daysPassed = Math.floor((now - createdAt) / 86400000);
+            const daysToCredit = Math.min(daysPassed, row.duration_days);
 
-            // só libera um ganho se já passaram 24h
-            const daysPassed = Math.floor(diffMs / 86400000);
+            // verificar ganhos já pagos
+            const alreadyPaidRes = await pool.query(
+                "SELECT COUNT(*) FROM investment_earnings WHERE investment_id = $1",
+                [row.id]
+            );
+            const alreadyPaid = parseInt(alreadyPaidRes.rows[0].count, 10);
 
-            // não pode mostrar mais do que a duração do pacote
-            const daysToShow = Math.min(daysPassed, row.duration_days);
+            // se houver novos ganhos → creditar
+            if (daysToCredit > alreadyPaid) {
+                const newPayments = daysToCredit - alreadyPaid;
 
-            // 3) Adicionar cada retorno diário liberado
-            for (let i = 0; i < daysToShow; i++) {
-                const payDate = new Date(createdAt.getTime() + (i + 1) * 86400000);
+                await pool.query(
+                    "UPDATE users SET balance_withdraw = balance_withdraw + $1 WHERE id = $2",
+                    [row.daily_earning * newPayments, req.userId]
+                );
 
-                // garante que só aparece se a data já passou
-                if (payDate <= now) {
-                    history.push({
-                        id: `${row.id}-day-${i + 1}`,
-                        type: 'earning',
-                        amount: parseFloat(row.daily_earning),
-                        packageName: row.package_name,
-                        roi: `Retorno diário (${row.daily_return_rate}%)`,
-                        status: 'Pago',
-                        timestamp: payDate
-                    });
+                for (let i = alreadyPaid; i < daysToCredit; i++) {
+                    await pool.query(
+                        "INSERT INTO investment_earnings (id, investment_id, amount, paid_at) VALUES ($1, $2, $3, NOW())",
+                        [uuidv4(), row.id, row.daily_earning]
+                    );
                 }
             }
-        });
+
+            // montar retornos diários já pagos
+            const earningsRes = await pool.query(
+                "SELECT amount, paid_at FROM investment_earnings WHERE investment_id = $1 ORDER BY paid_at ASC",
+                [row.id]
+            );
+
+            earningsRes.rows.forEach((earn, idx) => {
+                history.push({
+                    id: `${row.id}-earning-${idx + 1}`,
+                    type: 'earning',
+                    amount: parseFloat(earn.amount),
+                    packageName: row.package_name,
+                    roi: `Retorno diário (${row.daily_return_rate}%)`,
+                    status: 'Pago',
+                    timestamp: earn.paid_at
+                });
+            });
+        }
 
         res.json({ history });
     } catch (err) {
@@ -535,7 +546,6 @@ app.get('/api/investments/history', authenticateToken, async (req, res) => {
         res.status(500).json({ message: "Erro ao buscar histórico de investimentos." });
     }
 });
-
 
 
 // -------------------- VINCULAR CONTA --------------------
@@ -1130,6 +1140,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
 
