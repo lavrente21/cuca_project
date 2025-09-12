@@ -1062,7 +1062,7 @@ cron.schedule('0 0 * * *', async () => {
         client.release();
     }
 });
-import cron from "node-cron";
+
 import pool from "./db.js"; // ajusta conforme tua conexão com PostgreSQL
 
 // Executa todos os dias à meia-noite (00:00)
@@ -1140,6 +1140,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
 
