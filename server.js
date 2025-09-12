@@ -1094,11 +1094,12 @@ async function processDailyEarnings() {
                 await client.query(creditEarningQuery, [inv.daily_earning, inv.user_id]);
 
                 // Lógica para registar o ganho
-                const insertEarningQuery = `
-                    INSERT INTO investment_earnings (investment_id, amount, paid_at)
-                    VALUES ($1, $2, NOW())
-                `;
-                await client.query(insertEarningQuery, [inv.id, inv.daily_earning]);
+             const insertEarningQuery = `
+    INSERT INTO investment_earnings (id, investment_id, amount, paid_at)
+    VALUES ($1, $2, $3, NOW())
+`;
+                const earningId = uuidv4();
+await client.query(insertEarningQuery, [earningId, inv.id, inv.daily_earning]);
 
                 // Lógica para atualizar a contagem de dias restantes e a data do último crédito
                 const updateInvestmentQuery = `
