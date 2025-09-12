@@ -386,747 +386,1492 @@ app.get('/api/packages', async (req, res) => {
 
 
 // -------------------- SAQUE --------------------
+
 app.post('/api/withdraw', authenticateToken, async (req, res) => {
-    const { withdrawAmount: amountStr, transactionPassword } = req.body;
-    let client;
-    if (!amountStr || !transactionPassword) {
-        return res.status(400).json({ error: 'Todos os campos são obrigatórios para o saque.' });
-    }
-    const amount = parseFloat(amountStr);
-    if (isNaN(amount) || amount <= 0) {
-        return res.status(400).json({ error: 'Valor de saque inválido.' });
-    }
-    try {
-        const userRes = await pool.query(
-            "SELECT transaction_password_hash, balance_withdraw, balance, linked_account_number FROM users WHERE id = $1",
-            [req.userId]
-        );
-        const user = userRes.rows[0];
-        if (!user) {
-            return res.status(404).json({ error: 'Utilizador não encontrado.' });
-        }
-        if (!(await bcrypt.compare(transactionPassword, user.transaction_password_hash))) {
-            return res.status(401).json({ error: 'Senha de transação incorreta.' });
-        }
-        if (!user.linked_account_number) {
-            return res.status(400).json({ error: 'Nenhuma conta vinculada para saque. Por favor, vincule uma conta primeiro.' });
-        }
-        if (amount > parseFloat(user.balance_withdraw)) {
-            return res.status(400).json({ error: 'Saldo de saque insuficiente.' });
-        }
-        const fee = amount * (parseFloat(process.env.WITHDRAW_FEE_PERCENTAGE || '0.05'));
-        const actualAmount = amount - fee;
 
-        client = await pool.connect();
-        await client.query('BEGIN');
+    const { withdrawAmount: amountStr, transactionPassword } = req.body;
 
-        await client.query(
-            "UPDATE users SET balance_withdraw = balance_withdraw - $1, balance = balance - $2 WHERE id = $3",
-            [amount, amount, req.userId]
-        );
+    let client;
 
-        const withdrawalId = uuidv4();
-        const sqlWithdrawal = `
-            INSERT INTO withdrawals (id, user_id, requested_amount, fee, actual_amount, status, timestamp, account_number_used)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-        `;
-        await client.query(sqlWithdrawal, [
-            withdrawalId,
-            req.userId,
-            amount,
-            fee,
-            actualAmount,
-            'Pendente',
-            new Date(),
-            user.linked_account_number
-        ]);
+    if (!amountStr || !transactionPassword) {
 
-        await client.query('COMMIT');
+        return res.status(400).json({ error: 'Todos os campos são obrigatórios para o saque.' });
 
-        const updatedBalanceRes = await pool.query(
-            "SELECT balance_withdraw FROM users WHERE id = $1",
-            [req.userId]
-        );
-        const updatedBalanceWithdraw = updatedBalanceRes.rows[0].balance_withdraw;
-        console.log(`Saque de Kz ${amount} solicitado pelo utilizador ${req.userId}. Saldo Saque Restante: ${updatedBalanceWithdraw}`);
-        res.status(200).json({
-            message: 'Pedido de saque registado com sucesso!',
-            new_balance_withdraw: parseFloat(updatedBalanceWithdraw),
-            actual_amount_received: actualAmount
-        });
-    } catch (err) {
-        if (client) {
-            try { await client.query('ROLLBACK'); } catch (e) { /* ignore */ }
-        }
-        console.error('Erro no saque:', err);
-        res.status(500).json({ error: 'Erro interno do servidor ao processar saque.', message: err.message });
-    } finally {
-        if (client) client.release();
-    }
+    }
+
+    const amount = parseFloat(amountStr);
+
+    if (isNaN(amount) || amount <= 0) {
+
+        return res.status(400).json({ error: 'Valor de saque inválido.' });
+
+    }
+
+    try {
+
+        const userRes = await pool.query(
+
+            "SELECT transaction_password_hash, balance_withdraw, balance, linked_account_number FROM users WHERE id = $1",
+
+            [req.userId]
+
+        );
+
+        const user = userRes.rows[0];
+
+        if (!user) {
+
+            return res.status(404).json({ error: 'Utilizador não encontrado.' });
+
+        }
+
+        if (!(await bcrypt.compare(transactionPassword, user.transaction_password_hash))) {
+
+            return res.status(401).json({ error: 'Senha de transação incorreta.' });
+
+        }
+
+        if (!user.linked_account_number) {
+
+            return res.status(400).json({ error: 'Nenhuma conta vinculada para saque. Por favor, vincule uma conta primeiro.' });
+
+        }
+
+        if (amount > parseFloat(user.balance_withdraw)) {
+
+            return res.status(400).json({ error: 'Saldo de saque insuficiente.' });
+
+        }
+
+        const fee = amount * (parseFloat(process.env.WITHDRAW_FEE_PERCENTAGE || '0.05'));
+
+        const actualAmount = amount - fee;
+
+
+
+        client = await pool.connect();
+
+        await client.query('BEGIN');
+
+
+
+        await client.query(
+
+            "UPDATE users SET balance_withdraw = balance_withdraw - $1, balance = balance - $2 WHERE id = $3",
+
+            [amount, amount, req.userId]
+
+        );
+
+
+
+        const withdrawalId = uuidv4();
+
+        const sqlWithdrawal = `
+
+            INSERT INTO withdrawals (id, user_id, requested_amount, fee, actual_amount, status, timestamp, account_number_used)
+
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+
+        `;
+
+        await client.query(sqlWithdrawal, [
+
+            withdrawalId,
+
+            req.userId,
+
+            amount,
+
+            fee,
+
+            actualAmount,
+
+            'Pendente',
+
+            new Date(),
+
+            user.linked_account_number
+
+        ]);
+
+
+
+        await client.query('COMMIT');
+
+
+
+        const updatedBalanceRes = await pool.query(
+
+            "SELECT balance_withdraw FROM users WHERE id = $1",
+
+            [req.userId]
+
+        );
+
+        const updatedBalanceWithdraw = updatedBalanceRes.rows[0].balance_withdraw;
+
+        console.log(`Saque de Kz ${amount} solicitado pelo utilizador ${req.userId}. Saldo Saque Restante: ${updatedBalanceWithdraw}`);
+
+        res.status(200).json({
+
+            message: 'Pedido de saque registado com sucesso!',
+
+            new_balance_withdraw: parseFloat(updatedBalanceWithdraw),
+
+            actual_amount_received: actualAmount
+
+        });
+
+    } catch (err) {
+
+        if (client) {
+
+            try { await client.query('ROLLBACK'); } catch (e) { /* ignore */ }
+
+        }
+
+        console.error('Erro no saque:', err);
+
+        res.status(500).json({ error: 'Erro interno do servidor ao processar saque.', message: err.message });
+
+    } finally {
+
+        if (client) client.release();
+
+    }
+
 });
+
+
 
 // -------------------- HISTÓRICO DE INVESTIMENTOS --------------------
-// -------------------- HISTÓRICO DE INVESTIMENTOS (CORRIGIDO) --------------------
+
 app.get('/api/investments/history', authenticateToken, async (req, res) => {
-    try {
-        // Busca os investimentos originais do utilizador
-        const investmentsResult = await pool.query(
-            `SELECT ui.id,
-                    ui.amount,
-                    ui.daily_earning,
-                    ui.status,
-                    ui.created_at,
-                    p.name AS package_name,
-                    p.duration_days,
-                    p.daily_return_rate
-             FROM user_investments ui
-             JOIN investment_packages p ON ui.package_id = p.id
-             WHERE ui.user_id = $1
-             ORDER BY ui.created_at DESC`,
-            [req.userId]
-        );
 
-        // Busca todos os ganhos diários já creditados na tabela de ganhos
-        const earningsResult = await pool.query(
-            `SELECT ie.amount, ie.paid_at, p.name AS package_name, ui.daily_return_rate
-             FROM investment_earnings ie
-             JOIN user_investments ui ON ie.investment_id = ui.id
-             JOIN investment_packages p ON ui.package_id = p.id
-             WHERE ui.user_id = $1
-             ORDER BY ie.paid_at DESC`,
-            [req.userId]
-        );
-        
-        const history = [];
+    try {
 
-        // Adiciona cada investimento ao histórico
-        investmentsResult.rows.forEach(row => {
-            history.push({
-                id: row.id,
-                type: 'investment',
-                amount: parseFloat(row.amount),
-                packageName: row.package_name,
-                roi: `${row.daily_return_rate}% por ${row.duration_days} dias`,
-                status: row.status,
-                timestamp: row.created_at
-            });
-        });
+        const result = await pool.query(
 
-        // Adiciona cada ganho já pago ao histórico
-        earningsResult.rows.forEach(earning => {
-            history.push({
-                id: `earning-${earning.paid_at.getTime()}-${Math.random()}`, // ID único para o front-end
-                type: 'earning',
-                amount: parseFloat(earning.amount),
-                packageName: earning.package_name,
-                roi: `Retorno diário (${earning.daily_return_rate}%)`,
-                status: 'Pago',
-                timestamp: earning.paid_at
-            });
-        });
+            `SELECT ui.id,
 
-        // Ordena o histórico combinado pela data
-        history.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+                    ui.amount,
 
-        res.json({ history });
-    } catch (err) {
-        console.error("Erro ao buscar histórico de investimentos:", err);
-        res.status(500).json({ message: "Erro ao buscar histórico de investimentos." });
-    }
+                    ui.daily_earning,
+
+                    ui.days_remaining,
+
+                    ui.status,
+
+                    ui.created_at,
+
+                    p.name AS package_name,
+
+                    p.duration_days,
+
+                    p.daily_return_rate
+
+             FROM user_investments ui
+
+             JOIN investment_packages p ON ui.package_id = p.id
+
+             WHERE ui.user_id = $1
+
+             ORDER BY ui.created_at DESC`,
+
+            [req.userId]
+
+        );
+
+
+
+        const history = [];
+
+
+
+        result.rows.forEach(row => {
+
+            // 1) Compra do pacote (registro inicial)
+
+            history.push({
+
+                id: row.id,
+
+                type: 'investment',
+
+                amount: parseFloat(row.amount),
+
+                packageName: row.package_name,
+
+                roi: `${row.daily_return_rate}% por ${row.duration_days} dias`,
+
+                status: row.status,
+
+                timestamp: row.created_at
+
+            });
+
+
+
+            // 2) Calcular quantos retornos já estão liberados
+
+            const now = new Date();
+
+            const createdAt = new Date(row.created_at);
+
+            const diffMs = now - createdAt;
+
+
+
+            // só libera um ganho se já passaram 24h
+
+            const daysPassed = Math.floor(diffMs / 86400000);
+
+
+
+            // não pode mostrar mais do que a duração do pacote
+
+            const daysToShow = Math.min(daysPassed, row.duration_days);
+
+
+
+            // 3) Adicionar cada retorno diário liberado
+
+            for (let i = 0; i < daysToShow; i++) {
+
+                const payDate = new Date(createdAt.getTime() + (i + 1) * 86400000);
+
+
+
+                // garante que só aparece se a data já passou
+
+                if (payDate <= now) {
+
+                    history.push({
+
+                        id: `${row.id}-day-${i + 1}`,
+
+                        type: 'earning',
+
+                        amount: parseFloat(row.daily_earning),
+
+                        packageName: row.package_name,
+
+                        roi: `Retorno diário (${row.daily_return_rate}%)`,
+
+                        status: 'Pago',
+
+                        timestamp: payDate
+
+                    });
+
+                }
+
+            }
+
+        });
+
+
+
+        res.json({ history });
+
+    } catch (err) {
+
+        console.error("Erro ao buscar histórico de investimentos:", err);
+
+        res.status(500).json({ message: "Erro ao buscar histórico de investimentos." });
+
+    }
+
 });
+
+
+
+
 
 
 
 // -------------------- VINCULAR CONTA --------------------
+
 app.post('/api/link-account', authenticateToken, async (req, res) => {
-    const { bankName, accountNumber, accountHolder, transactionPassword } = req.body;
-    if (!bankName || !accountNumber || !accountHolder || !transactionPassword) {
-        return res.status(400).json({ error: 'Todos os campos da conta são obrigatórios.' });
-    }
-    try {
-        const userRes = await pool.query("SELECT transaction_password_hash FROM users WHERE id = $1", [req.userId]);
-        const userInfo = userRes.rows[0];
-        if (!userInfo) {
-            return res.status(404).json({ error: 'Utilizador não encontrado.' });
-        }
-        if (!(await bcrypt.compare(transactionPassword, userInfo.transaction_password_hash))) {
-            return res.status(401).json({ error: 'Senha de transação incorreta.' });
-        }
-        const sql = `
-            UPDATE users SET
-            linked_account_bank_name = $1,
-            linked_account_number = $2,
-            linked_account_holder = $3
-            WHERE id = $4
-        `;
-        await pool.query(sql, [bankName, accountNumber, accountHolder, req.userId]);
-        console.log(`Conta vinculada para o utilizador ${req.userId}: ${bankName} - ${accountNumber}`);
-        res.status(200).json({ message: 'Conta vinculada com sucesso!' });
-    } catch (err) {
-        console.error('Erro ao vincular conta:', err);
-        res.status(500).json({ error: 'Erro interno do servidor ao vincular conta.', message: err.message });
-    }
+
+    const { bankName, accountNumber, accountHolder, transactionPassword } = req.body;
+
+    if (!bankName || !accountNumber || !accountHolder || !transactionPassword) {
+
+        return res.status(400).json({ error: 'Todos os campos da conta são obrigatórios.' });
+
+    }
+
+    try {
+
+        const userRes = await pool.query("SELECT transaction_password_hash FROM users WHERE id = $1", [req.userId]);
+
+        const userInfo = userRes.rows[0];
+
+        if (!userInfo) {
+
+            return res.status(404).json({ error: 'Utilizador não encontrado.' });
+
+        }
+
+        if (!(await bcrypt.compare(transactionPassword, userInfo.transaction_password_hash))) {
+
+            return res.status(401).json({ error: 'Senha de transação incorreta.' });
+
+        }
+
+        const sql = `
+
+            UPDATE users SET
+
+            linked_account_bank_name = $1,
+
+            linked_account_number = $2,
+
+            linked_account_holder = $3
+
+            WHERE id = $4
+
+        `;
+
+        await pool.query(sql, [bankName, accountNumber, accountHolder, req.userId]);
+
+        console.log(`Conta vinculada para o utilizador ${req.userId}: ${bankName} - ${accountNumber}`);
+
+        res.status(200).json({ message: 'Conta vinculada com sucesso!' });
+
+    } catch (err) {
+
+        console.error('Erro ao vincular conta:', err);
+
+        res.status(500).json({ error: 'Erro interno do servidor ao vincular conta.', message: err.message });
+
+    }
+
 });
+
+
 
 // -------------------- HISTÓRICOS --------------------
+
 app.get('/api/withdrawals/history', authenticateToken, async (req, res) => {
-    try {
-        const result = await pool.query(
-            "SELECT requested_amount, fee, actual_amount, status, timestamp, account_number_used FROM withdrawals WHERE user_id = $1 ORDER BY timestamp DESC",
-            [req.userId]
-        );
-        const history = result.rows.map(item => ({
-            requested_amount: parseFloat(item.requested_amount),
-            fee: parseFloat(item.fee),
-            actual_amount: parseFloat(item.actual_amount),
-            status: item.status,
-            timestamp: item.timestamp ? item.timestamp.toISOString() : null,
-            account_number_used: item.account_number_used
-        }));
-        res.status(200).json({ history: history });
-    } catch (err) {
-        console.error('Erro ao obter histórico de saques:', err);
-        res.status(500).json({ error: 'Erro interno do servidor ao carregar histórico.', message: err.message });
-     // Antes de montar o histórico
+
+    try {
+
+        const result = await pool.query(
+
+            "SELECT requested_amount, fee, actual_amount, status, timestamp, account_number_used FROM withdrawals WHERE user_id = $1 ORDER BY timestamp DESC",
+
+            [req.userId]
+
+        );
+
+        const history = result.rows.map(item => ({
+
+            requested_amount: parseFloat(item.requested_amount),
+
+            fee: parseFloat(item.fee),
+
+            actual_amount: parseFloat(item.actual_amount),
+
+            status: item.status,
+
+            timestamp: item.timestamp ? item.timestamp.toISOString() : null,
+
+            account_number_used: item.account_number_used
+
+        }));
+
+        res.status(200).json({ history: history });
+
+    } catch (err) {
+
+        console.error('Erro ao obter histórico de saques:', err);
+
+        res.status(500).json({ error: 'Erro interno do servidor ao carregar histórico.', message: err.message });
+
+     // Antes de montar o histórico
+
 for (const row of result.rows) {
-    const now = new Date();
-    const createdAt = new Date(row.created_at);
 
-    const daysPassed = Math.floor((now - createdAt) / 86400000);
-    const daysToCredit = Math.min(daysPassed, row.duration_days);
+    const now = new Date();
 
-    // pega quantos dias já estão pagos
-    const alreadyPaidRes = await pool.query(
-        "SELECT COUNT(*) FROM investment_earnings WHERE investment_id = $1",
-        [row.id]
-    );
-    const alreadyPaid = parseInt(alreadyPaidRes.rows[0].count, 10);
+    const createdAt = new Date(row.created_at);
 
-    // Se houver dias novos a pagar → credita no saldo_withdraw
-    if (daysToCredit > alreadyPaid) {
-        const newPayments = daysToCredit - alreadyPaid;
 
-        await pool.query(
-            "UPDATE users SET balance_withdraw = balance_withdraw + $1 WHERE id = $2",
-            [row.daily_earning * newPayments, req.userId]
-        );
 
-        // salva os pagamentos (para não repetir)
-        for (let i = alreadyPaid; i < daysToCredit; i++) {
-            await pool.query(
-                "INSERT INTO investment_earnings (id, investment_id, amount, paid_at) VALUES ($1, $2, $3, NOW())",
-                [uuidv4(), row.id, row.daily_earning]
-            );
-        }
-    }
+    const daysPassed = Math.floor((now - createdAt) / 86400000);
+
+    const daysToCredit = Math.min(daysPassed, row.duration_days);
+
+
+
+    // pega quantos dias já estão pagos
+
+    const alreadyPaidRes = await pool.query(
+
+        "SELECT COUNT(*) FROM investment_earnings WHERE investment_id = $1",
+
+        [row.id]
+
+    );
+
+    const alreadyPaid = parseInt(alreadyPaidRes.rows[0].count, 10);
+
+
+
+    // Se houver dias novos a pagar → credita no saldo_withdraw
+
+    if (daysToCredit > alreadyPaid) {
+
+        const newPayments = daysToCredit - alreadyPaid;
+
+
+
+        await pool.query(
+
+            "UPDATE users SET balance_withdraw = balance_withdraw + $1 WHERE id = $2",
+
+            [row.daily_earning * newPayments, req.userId]
+
+        );
+
+
+
+        // salva os pagamentos (para não repetir)
+
+        for (let i = alreadyPaid; i < daysToCredit; i++) {
+
+            await pool.query(
+
+                "INSERT INTO investment_earnings (id, investment_id, amount, paid_at) VALUES ($1, $2, $3, NOW())",
+
+                [uuidv4(), row.id, row.daily_earning]
+
+            );
+
+        }
+
+    }
+
 }
 
-    }
+
+
+    }
+
 });
+
+
 
 app.get('/api/deposits/history', authenticateToken, async (req, res) => {
-    try {
-        const result = await pool.query(
-            "SELECT id, amount, status, timestamp, receipt_filename FROM deposits WHERE user_id = $1 ORDER BY timestamp DESC",
-            [req.userId]
-        );
-        const history = result.rows.map(item => ({
-            id: item.id,
-            amount: parseFloat(item.amount),
-            status: item.status,
-            timestamp: item.timestamp ? item.timestamp.toISOString() : null,
-            receipt_filename: item.receipt_filename
-        }));
-        res.status(200).json({ history: history });
-    } catch (err) {
-        console.error('Erro ao obter histórico de depósitos:', err);
-        res.status(500).json({ error: 'Erro interno do servidor ao carregar histórico de depósitos.', message: err.message });
-    }
+
+    try {
+
+        const result = await pool.query(
+
+            "SELECT id, amount, status, timestamp, receipt_filename FROM deposits WHERE user_id = $1 ORDER BY timestamp DESC",
+
+            [req.userId]
+
+        );
+
+        const history = result.rows.map(item => ({
+
+            id: item.id,
+
+            amount: parseFloat(item.amount),
+
+            status: item.status,
+
+            timestamp: item.timestamp ? item.timestamp.toISOString() : null,
+
+            receipt_filename: item.receipt_filename
+
+        }));
+
+        res.status(200).json({ history: history });
+
+    } catch (err) {
+
+        console.error('Erro ao obter histórico de depósitos:', err);
+
+        res.status(500).json({ error: 'Erro interno do servidor ao carregar histórico de depósitos.', message: err.message });
+
+    }
+
 });
+
+
 
 app.get('/api/investments/history', authenticateToken, async (req, res) => {
-    try {
-        const result = await pool.query(
-            "SELECT id, package_name, amount, roi, status, timestamp FROM investments WHERE user_id = $1 ORDER BY timestamp DESC",
-            [req.userId]
-        );
-        const history = result.rows.map(item => ({
-            id: item.id,
-            packageName: item.package_name,
-            amount: parseFloat(item.amount),
-            roi: item.roi,
-            status: item.status,
-            timestamp: item.timestamp ? item.timestamp.toISOString() : null
-        }));
-        res.status(200).json({ history: history });
-    } catch (err) {
-        console.error('Erro ao obter histórico de investimentos:', err);
-        res.status(500).json({ error: 'Erro interno do servidor ao carregar histórico de investimentos.', message: err.message });
-    }
+
+    try {
+
+        const result = await pool.query(
+
+            "SELECT id, package_name, amount, roi, status, timestamp FROM investments WHERE user_id = $1 ORDER BY timestamp DESC",
+
+            [req.userId]
+
+        );
+
+        const history = result.rows.map(item => ({
+
+            id: item.id,
+
+            packageName: item.package_name,
+
+            amount: parseFloat(item.amount),
+
+            roi: item.roi,
+
+            status: item.status,
+
+            timestamp: item.timestamp ? item.timestamp.toISOString() : null
+
+        }));
+
+        res.status(200).json({ history: history });
+
+    } catch (err) {
+
+        console.error('Erro ao obter histórico de investimentos:', err);
+
+        res.status(500).json({ error: 'Erro interno do servidor ao carregar histórico de investimentos.', message: err.message });
+
+    }
+
 });
 
+
+
 // ==============================================================================
+
 // ROTAS ADMIN
+
 // ==============================================================================
+
+
 
 // Middleware para verificar admin
+
 const authenticateAdmin = async (req, res, next) => {
-    try {
-        const result = await pool.query("SELECT is_admin FROM users WHERE id = $1", [req.userId]);
-        if (!result.rows[0] || !result.rows[0].is_admin) {
-            return res.status(403).json({ message: 'Acesso negado: Admin apenas.' });
-        }
-        next();
-    } catch (err) {
-        console.error('Erro ao autenticar admin:', err);
-        res.status(500).json({ message: 'Erro interno ao verificar admin.' });
-    }
+
+    try {
+
+        const result = await pool.query("SELECT is_admin FROM users WHERE id = $1", [req.userId]);
+
+        if (!result.rows[0] || !result.rows[0].is_admin) {
+
+            return res.status(403).json({ message: 'Acesso negado: Admin apenas.' });
+
+        }
+
+        next();
+
+    } catch (err) {
+
+        console.error('Erro ao autenticar admin:', err);
+
+        res.status(500).json({ message: 'Erro interno ao verificar admin.' });
+
+    }
+
 };
 
+
+
 // [Aqui entram todas as rotas admin que enviei na mensagem anterior]
+
 // (Listagem de usuários, depósitos, saques, pacotes de investimento, posts, dashboard admin)
+
 // ==============================================================================
+
 // ROTAS ADMIN
+
 // ==============================================================================
+
+
 
 // -------------------- LISTAR USUÁRIOS --------------------
+
 app.get('/api/admin/users', authenticateToken, authenticateAdmin, async (req, res) => {
-    try {
-        const result = await pool.query(
-            "SELECT id, username, user_id_code, balance, balance_recharge, balance_withdraw, is_admin FROM users ORDER BY username ASC"
-        );
-        res.status(200).json({ users: result.rows });
-    } catch (err) {
-        console.error('Erro ao listar usuários (admin):', err);
-        res.status(500).json({ message: 'Erro interno ao carregar usuários.', error: err.message });
-    }
+
+    try {
+
+        const result = await pool.query(
+
+            "SELECT id, username, user_id_code, balance, balance_recharge, balance_withdraw, is_admin FROM users ORDER BY username ASC"
+
+        );
+
+        res.status(200).json({ users: result.rows });
+
+    } catch (err) {
+
+        console.error('Erro ao listar usuários (admin):', err);
+
+        res.status(500).json({ message: 'Erro interno ao carregar usuários.', error: err.message });
+
+    }
+
 });
 
+
+
 // ========================
+
 // Atualizar usuário (Admin)
+
 // ========================
+
 app.put('/api/admin/users/:id', authenticateToken, authenticateAdmin, async (req, res) => {
-    try {
-        const { id } = req.params;
-        const { username, balance, balance_recharge, balance_withdraw, user_id_code, linked_account_bank_name, linked_account_number, is_admin } = req.body;
 
-        const result = await pool.query(
-            `UPDATE users 
-             SET username=$1, balance=$2, balance_recharge=$3, balance_withdraw=$4, 
-                 user_id_code=$5, linked_account_bank_name=$6, linked_account_number=$7, is_admin=$8
-             WHERE id=$9`,
-            [username, balance, balance_recharge, balance_withdraw, user_id_code, linked_account_bank_name, linked_account_number, is_admin ? true : false, id]
-        );
+    try {
 
-        if (result.rowCount === 0) {
-            return res.status(404).json({ error: "Usuário não encontrado" });
-        }
+        const { id } = req.params;
 
-        res.json({ message: "Usuário atualizado com sucesso" });
-    } catch (err) {
-        console.error("Erro ao atualizar usuário:", err);
-        res.status(500).json({ error: "Erro ao atualizar usuário" });
-    }
+        const { username, balance, balance_recharge, balance_withdraw, user_id_code, linked_account_bank_name, linked_account_number, is_admin } = req.body;
+
+
+
+        const result = await pool.query(
+
+            `UPDATE users 
+
+             SET username=$1, balance=$2, balance_recharge=$3, balance_withdraw=$4, 
+
+                 user_id_code=$5, linked_account_bank_name=$6, linked_account_number=$7, is_admin=$8
+
+             WHERE id=$9`,
+
+            [username, balance, balance_recharge, balance_withdraw, user_id_code, linked_account_bank_name, linked_account_number, is_admin ? true : false, id]
+
+        );
+
+
+
+        if (result.rowCount === 0) {
+
+            return res.status(404).json({ error: "Usuário não encontrado" });
+
+        }
+
+
+
+        res.json({ message: "Usuário atualizado com sucesso" });
+
+    } catch (err) {
+
+        console.error("Erro ao atualizar usuário:", err);
+
+        res.status(500).json({ error: "Erro ao atualizar usuário" });
+
+    }
+
 });
+
+
+
+
+
 
 
 
 
 // -------------------- LISTAR DEPÓSITOS --------------------
-app.get('/api/admin/deposits', authenticateToken, authenticateAdmin, async (req, res) => {
-    try {
-        const result = await pool.query(`
-            SELECT 
-                d.id,
-                d.amount,
-                d.status,
-                d.timestamp,
-                d.receipt_filename,
-                u.username
-            FROM deposits d
-            JOIN users u ON d.user_id = u.id
-            ORDER BY d.timestamp DESC
-        `);
 
-        res.json({ deposits: result.rows });
-    } catch (err) {
-        console.error('Erro ao buscar depósitos:', err);
-        res.status(500).json({ message: 'Erro no servidor' });
-    }
+app.get('/api/admin/deposits', authenticateToken, authenticateAdmin, async (req, res) => {
+
+    try {
+
+        const result = await pool.query(`
+
+            SELECT 
+
+                d.id,
+
+                d.amount,
+
+                d.status,
+
+                d.timestamp,
+
+                d.receipt_filename,
+
+                u.username
+
+            FROM deposits d
+
+            JOIN users u ON d.user_id = u.id
+
+            ORDER BY d.timestamp DESC
+
+        `);
+
+
+
+        res.json({ deposits: result.rows });
+
+    } catch (err) {
+
+        console.error('Erro ao buscar depósitos:', err);
+
+        res.status(500).json({ message: 'Erro no servidor' });
+
+    }
+
 });
+
+
 
 // -------------------- ATUALIZAR STATUS DEPÓSITO --------------------
+
 // Atualizar depósito (aprovar/rejeitar)
+
 app.put('/api/admin/deposits/:id', authenticateToken, authenticateAdmin, async (req, res) => {
-    const { id } = req.params;
-    const { status } = req.body;
 
-    try {
-        const depositResult = await pool.query(
-            'SELECT * FROM deposits WHERE id = $1',
-            [id]
-        );
+    const { id } = req.params;
 
-        if (depositResult.rows.length === 0) {
-            return res.status(404).json({ error: 'Depósito não encontrado' });
-        }
+    const { status } = req.body;
 
-        const deposit = depositResult.rows[0];
 
-        await pool.query(
-            'UPDATE deposits SET status = $1 WHERE id = $2',
-            [status, id]
-        );
 
-        // 🔥 Se aprovado, soma no saldo e no saldo de recarga
-        if (status === 'Aprovado') {
-            const amount = parseFloat(deposit.amount);
+    try {
 
-            await pool.query(
-                `UPDATE users 
-                 SET balance_recharge = COALESCE(balance_recharge, 0) + $1,
-                     balance = COALESCE(balance, 0) + $1
-                 WHERE id = $2`,
-                [amount, deposit.user_id]
-            );
-        }
+        const depositResult = await pool.query(
 
-        res.json({ message: `Depósito ${status} com sucesso.` });
-    } catch (err) {
-        console.error('Erro ao atualizar depósito:', err);
-        res.status(500).json({ error: 'Erro ao atualizar depósito' });
-    }
+            'SELECT * FROM deposits WHERE id = $1',
+
+            [id]
+
+        );
+
+
+
+        if (depositResult.rows.length === 0) {
+
+            return res.status(404).json({ error: 'Depósito não encontrado' });
+
+        }
+
+
+
+        const deposit = depositResult.rows[0];
+
+
+
+        await pool.query(
+
+            'UPDATE deposits SET status = $1 WHERE id = $2',
+
+            [status, id]
+
+        );
+
+
+
+        // 🔥 Se aprovado, soma no saldo e no saldo de recarga
+
+        if (status === 'Aprovado') {
+
+            const amount = parseFloat(deposit.amount);
+
+
+
+            await pool.query(
+
+                `UPDATE users 
+
+                 SET balance_recharge = COALESCE(balance_recharge, 0) + $1,
+
+                     balance = COALESCE(balance, 0) + $1
+
+                 WHERE id = $2`,
+
+                [amount, deposit.user_id]
+
+            );
+
+        }
+
+
+
+        res.json({ message: `Depósito ${status} com sucesso.` });
+
+    } catch (err) {
+
+        console.error('Erro ao atualizar depósito:', err);
+
+        res.status(500).json({ error: 'Erro ao atualizar depósito' });
+
+    }
+
 });
 
 
 
 
 
+
+
+
+
+
+
 // -------------------- LISTAR SAQUES --------------------
+
 // -------------------- LISTAR SAQUES --------------------
+
 app.get('/api/admin/withdrawals', authenticateToken, authenticateAdmin, async (req, res) => {
-    try {
-        const result = await pool.query(`
-            SELECT 
-                w.id,
-                w.requested_amount,
-                w.fee,
-                w.actual_amount,
-                w.status,
-                w.timestamp,
-                w.account_number_used,
-                u.username
-            FROM withdrawals w
-            JOIN users u ON w.user_id = u.id
-            ORDER BY w.timestamp DESC
-        `);
 
-        res.json({ withdrawals: result.rows });
-    } catch (err) {
-        console.error('Erro ao buscar levantamentos:', err);
-        res.status(500).json({ message: 'Erro no servidor' });
-    }
+    try {
+
+        const result = await pool.query(`
+
+            SELECT 
+
+                w.id,
+
+                w.requested_amount,
+
+                w.fee,
+
+                w.actual_amount,
+
+                w.status,
+
+                w.timestamp,
+
+                w.account_number_used,
+
+                u.username
+
+            FROM withdrawals w
+
+            JOIN users u ON w.user_id = u.id
+
+            ORDER BY w.timestamp DESC
+
+        `);
+
+
+
+        res.json({ withdrawals: result.rows });
+
+    } catch (err) {
+
+        console.error('Erro ao buscar levantamentos:', err);
+
+        res.status(500).json({ message: 'Erro no servidor' });
+
+    }
+
 });
 
+
+
 // -------------------- APROVAR / REJEITAR SAQUE --------------------
+
 // -------------------- APROVAR / REJEITAR SAQUE --------------------
+
 app.put('/api/admin/withdrawals/:id', authenticateToken, authenticateAdmin, async (req, res) => {
-    const { id } = req.params;
-    const { status } = req.body; // "Aprovado" ou "Rejeitado"
 
-    if (!['Aprovado', 'Rejeitado'].includes(status)) {
-        return res.status(400).json({ message: 'Status inválido.' });
-    }
+    const { id } = req.params;
 
-    let client;
-    try {
-        client = await pool.connect();
-        await client.query('BEGIN');
+    const { status } = req.body; // "Aprovado" ou "Rejeitado"
 
-        const withdrawalRes = await client.query(
-            "SELECT user_id, requested_amount, status AS current_status FROM withdrawals WHERE id = $1",
-            [id]
-        );
 
-        if (withdrawalRes.rows.length === 0) throw new Error('Saque não encontrado.');
-        const { user_id, requested_amount, current_status } = withdrawalRes.rows[0];
 
-        if (current_status !== 'Pendente') throw new Error('Saque já processado.');
+    if (!['Aprovado', 'Rejeitado'].includes(status)) {
 
-        // Atualiza status do saque
-        await client.query("UPDATE withdrawals SET status = $1 WHERE id = $2", [status, id]);
+        return res.status(400).json({ message: 'Status inválido.' });
 
-        if (status === 'Rejeitado') {
-            // devolve o valor para o saldo do usuário
-            await client.query(`
-                UPDATE users 
-                SET balance = COALESCE(balance, 0) + $1, 
-                    balance_withdraw = COALESCE(balance_withdraw, 0) + $1 
-                WHERE id = $2
-            `, [requested_amount, user_id]);
-        }
+    }
 
-        if (status === 'Aprovado') {
-            // 🔥 dá permissão para o usuário criar 1 post no blog
-            await client.query(`
-                INSERT INTO user_blog_limit (user_id, allowed_posts)
-                VALUES ($1, 1)
-                ON CONFLICT (user_id) DO UPDATE
-                SET allowed_posts = user_blog_limit.allowed_posts + 1
-            `, [user_id]);
-        }
 
-        await client.query('COMMIT');
-        res.status(200).json({ message: `Saque ${status.toLowerCase()} com sucesso.` });
-    } catch (err) {
-        if (client) await client.query('ROLLBACK');
-        console.error('Erro ao processar saque (admin):', err);
-        res.status(500).json({ message: 'Erro interno ao processar saque.', error: err.message });
-    } finally {
-        if (client) client.release();
-    }
+
+    let client;
+
+    try {
+
+        client = await pool.connect();
+
+        await client.query('BEGIN');
+
+
+
+        const withdrawalRes = await client.query(
+
+            "SELECT user_id, requested_amount, status AS current_status FROM withdrawals WHERE id = $1",
+
+            [id]
+
+        );
+
+
+
+        if (withdrawalRes.rows.length === 0) throw new Error('Saque não encontrado.');
+
+        const { user_id, requested_amount, current_status } = withdrawalRes.rows[0];
+
+
+
+        if (current_status !== 'Pendente') throw new Error('Saque já processado.');
+
+
+
+        // Atualiza status do saque
+
+        await client.query("UPDATE withdrawals SET status = $1 WHERE id = $2", [status, id]);
+
+
+
+        if (status === 'Rejeitado') {
+
+            // devolve o valor para o saldo do usuário
+
+            await client.query(`
+
+                UPDATE users 
+
+                SET balance = COALESCE(balance, 0) + $1, 
+
+                    balance_withdraw = COALESCE(balance_withdraw, 0) + $1 
+
+                WHERE id = $2
+
+            `, [requested_amount, user_id]);
+
+        }
+
+
+
+        if (status === 'Aprovado') {
+
+            // 🔥 dá permissão para o usuário criar 1 post no blog
+
+            await client.query(`
+
+                INSERT INTO user_blog_limit (user_id, allowed_posts)
+
+                VALUES ($1, 1)
+
+                ON CONFLICT (user_id) DO UPDATE
+
+                SET allowed_posts = user_blog_limit.allowed_posts + 1
+
+            `, [user_id]);
+
+        }
+
+
+
+        await client.query('COMMIT');
+
+        res.status(200).json({ message: `Saque ${status.toLowerCase()} com sucesso.` });
+
+    } catch (err) {
+
+        if (client) await client.query('ROLLBACK');
+
+        console.error('Erro ao processar saque (admin):', err);
+
+        res.status(500).json({ message: 'Erro interno ao processar saque.', error: err.message });
+
+    } finally {
+
+        if (client) client.release();
+
+    }
+
 });
+
+
 
 // -------------------- LISTAR PACOTES --------------------
+
 // Criar novo pacote
 
 
+
+
+
 // Criar novo pacote
+
 app.post('/api/admin/packages', authenticateToken, authenticateAdmin, async (req, res) => {
-    const { name, description, min_investment, max_investment, daily_return_rate, duration_days, status } = req.body;
 
-    try {
-        const result = await pool.query(
-            `INSERT INTO investment_packages 
-            (id, name, description, min_investment, max_investment, daily_return_rate, duration_days, status, created_at) 
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW()) RETURNING *`,
-            [uuidv4(), name, description, min_investment, max_investment, daily_return_rate, duration_days, status]
-        );
-        res.json(result.rows[0]);
-    } catch (err) {
-        console.error('Erro ao adicionar pacote:', err.message);
-        res.status(500).json({ error: 'Erro interno ao adicionar pacote' });
-    }
+    const { name, description, min_investment, max_investment, daily_return_rate, duration_days, status } = req.body;
+
+
+
+    try {
+
+        const result = await pool.query(
+
+            `INSERT INTO investment_packages 
+
+            (id, name, description, min_investment, max_investment, daily_return_rate, duration_days, status, created_at) 
+
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW()) RETURNING *`,
+
+            [uuidv4(), name, description, min_investment, max_investment, daily_return_rate, duration_days, status]
+
+        );
+
+        res.json(result.rows[0]);
+
+    } catch (err) {
+
+        console.error('Erro ao adicionar pacote:', err.message);
+
+        res.status(500).json({ error: 'Erro interno ao adicionar pacote' });
+
+    }
+
 });
+
+
+
 
 
 // Atualizar pacote
+
 app.put('/api/admin/packages/:id', authenticateToken, authenticateAdmin, async (req, res) => {
-    try {
-        const { id } = req.params;
-        const { name, min_investment, max_investment, daily_return_rate, duration_days, status, description } = req.body;
 
-        const result = await pool.query(
-            `UPDATE investment_packages 
-             SET name=$1, min_investment=$2, max_investment=$3, 
-                 daily_return_rate=$4, duration_days=$5, status=$6, description=$7
-             WHERE id=$8`,
-            [name, min_investment, max_investment, daily_return_rate, duration_days, status, description, id]
-        );
+    try {
 
-        if (result.rowCount === 0) return res.status(404).json({ message: 'Pacote não encontrado.' });
-        res.json({ message: 'Pacote atualizado com sucesso.' });
-    } catch (err) {
-        console.error('Erro ao atualizar pacote:', err);
-        res.status(500).json({ message: 'Erro ao atualizar pacote', error: err.message });
-    }
+        const { id } = req.params;
+
+        const { name, min_investment, max_investment, daily_return_rate, duration_days, status, description } = req.body;
+
+
+
+        const result = await pool.query(
+
+            `UPDATE investment_packages 
+
+             SET name=$1, min_investment=$2, max_investment=$3, 
+
+                 daily_return_rate=$4, duration_days=$5, status=$6, description=$7
+
+             WHERE id=$8`,
+
+            [name, min_investment, max_investment, daily_return_rate, duration_days, status, description, id]
+
+        );
+
+
+
+        if (result.rowCount === 0) return res.status(404).json({ message: 'Pacote não encontrado.' });
+
+        res.json({ message: 'Pacote atualizado com sucesso.' });
+
+    } catch (err) {
+
+        console.error('Erro ao atualizar pacote:', err);
+
+        res.status(500).json({ message: 'Erro ao atualizar pacote', error: err.message });
+
+    }
+
 });
+
+
+
 
 
 // Deletar pacote
+
 app.delete('/api/admin/packages/:id', authenticateToken, authenticateAdmin, async (req, res) => {
-    try {
-        const { id } = req.params;
-        const result = await pool.query("DELETE FROM investment_packages WHERE id=$1", [id]);
-        if (result.rowCount === 0) return res.status(404).json({ message: 'Pacote não encontrado.' });
-        res.json({ message: 'Pacote excluído com sucesso.' });
-    } catch (err) {
-        console.error('Erro ao excluir pacote:', err);
-        res.status(500).json({ message: 'Erro ao excluir pacote', error: err.message });
-    }
+
+    try {
+
+        const { id } = req.params;
+
+        const result = await pool.query("DELETE FROM investment_packages WHERE id=$1", [id]);
+
+        if (result.rowCount === 0) return res.status(404).json({ message: 'Pacote não encontrado.' });
+
+        res.json({ message: 'Pacote excluído com sucesso.' });
+
+    } catch (err) {
+
+        console.error('Erro ao excluir pacote:', err);
+
+        res.status(500).json({ message: 'Erro ao excluir pacote', error: err.message });
+
+    }
+
 });
+
 // Listar pacotes
+
 app.get('/api/admin/packages', authenticateToken, authenticateAdmin, async (req, res) => {
-    try {
-        const result = await pool.query("SELECT * FROM investment_packages ORDER BY created_at DESC NULLS LAST");
-        res.status(200).json({ packages: result.rows });
-    } catch (err) {
-        console.error("Erro ao listar pacotes:", err);
-        res.status(500).json({ error: "Erro ao listar pacotes" });
-    }
+
+    try {
+
+        const result = await pool.query("SELECT * FROM investment_packages ORDER BY created_at DESC NULLS LAST");
+
+        res.status(200).json({ packages: result.rows });
+
+    } catch (err) {
+
+        console.error("Erro ao listar pacotes:", err);
+
+        res.status(500).json({ error: "Erro ao listar pacotes" });
+
+    }
+
 });
+
+
+
 
 
 // -------------------- GERIR POSTS --------------------
 
+
+
 app.get('/api/blog/posts', async (req, res) => {
-    try {
-        const result = await pool.query(
-            `SELECT bp.id, bp.title, bp.content, bp.image_url, bp.published_at, u.username AS author
-             FROM blog_posts bp
-             JOIN users u ON u.id = bp.author_id
-             WHERE bp.is_approved = true
-             ORDER BY bp.published_at DESC`
-        );
-        res.json({ posts: result.rows });
-    } catch (err) {
-        console.error('Erro ao listar posts aprovados:', err);
-        res.status(500).json({ message: 'Erro interno ao listar posts.', error: err.message });
-    }
+
+    try {
+
+        const result = await pool.query(
+
+            `SELECT bp.id, bp.title, bp.content, bp.image_url, bp.published_at, u.username AS author
+
+             FROM blog_posts bp
+
+             JOIN users u ON u.id = bp.author_id
+
+             WHERE bp.is_approved = true
+
+             ORDER BY bp.published_at DESC`
+
+        );
+
+        res.json({ posts: result.rows });
+
+    } catch (err) {
+
+        console.error('Erro ao listar posts aprovados:', err);
+
+        res.status(500).json({ message: 'Erro interno ao listar posts.', error: err.message });
+
+    }
+
 });
+
+
+
 
 
 app.post('/api/blog/posts', authenticateToken, async (req, res) => {
-    let { content, image_url } = req.body;
-    const title = "SAQUE"; // título fixo
 
-    // Se o conteúdo estiver vazio, define como null ou string vazia
-    if (!content) content = null; // ou content = ""
+    let { content, image_url } = req.body;
 
-    try {
-        // 1️⃣ Verifica se tem posts disponíveis
-        const limitRes = await pool.query(
-            "SELECT allowed_posts FROM user_blog_limit WHERE user_id = $1",
-            [req.userId]
-        );
+    const title = "SAQUE"; // título fixo
 
-        if (limitRes.rows.length === 0 || parseInt(limitRes.rows[0].allowed_posts) <= 0) {
-            return res.status(403).json({
-                message: "Você não tem permissão para postar. Faça um saque aprovado primeiro."
-            });
-        }
 
-        // 2️⃣ Cria o post
-        const postId = uuidv4();
-        await pool.query(
-            `INSERT INTO blog_posts (id, author_id, title, content, image_url, is_approved, published_at)
-             VALUES ($1, $2, $3, $4, $5, false, NOW())`,
-            [postId, req.userId, title, content, image_url || null]
-        );
 
-        // 3️⃣ Decrementa o contador de posts disponíveis
-        await pool.query(
-            "UPDATE user_blog_limit SET allowed_posts = allowed_posts - 1 WHERE user_id = $1",
-            [req.userId]
-        );
+    // Se o conteúdo estiver vazio, define como null ou string vazia
 
-        res.status(201).json({ message: 'Post enviado para aprovação do admin.', postId });
-    } catch (err) {
-        console.error('Erro ao criar post do blog:', err);
-        res.status(500).json({ message: 'Erro interno ao criar post.', error: err.message });
-    }
+    if (!content) content = null; // ou content = ""
+
+
+
+    try {
+
+        // 1️⃣ Verifica se tem posts disponíveis
+
+        const limitRes = await pool.query(
+
+            "SELECT allowed_posts FROM user_blog_limit WHERE user_id = $1",
+
+            [req.userId]
+
+        );
+
+
+
+        if (limitRes.rows.length === 0 || parseInt(limitRes.rows[0].allowed_posts) <= 0) {
+
+            return res.status(403).json({
+
+                message: "Você não tem permissão para postar. Faça um saque aprovado primeiro."
+
+            });
+
+        }
+
+
+
+        // 2️⃣ Cria o post
+
+        const postId = uuidv4();
+
+        await pool.query(
+
+            `INSERT INTO blog_posts (id, author_id, title, content, image_url, is_approved, published_at)
+
+             VALUES ($1, $2, $3, $4, $5, false, NOW())`,
+
+            [postId, req.userId, title, content, image_url || null]
+
+        );
+
+
+
+        // 3️⃣ Decrementa o contador de posts disponíveis
+
+        await pool.query(
+
+            "UPDATE user_blog_limit SET allowed_posts = allowed_posts - 1 WHERE user_id = $1",
+
+            [req.userId]
+
+        );
+
+
+
+        res.status(201).json({ message: 'Post enviado para aprovação do admin.', postId });
+
+    } catch (err) {
+
+        console.error('Erro ao criar post do blog:', err);
+
+        res.status(500).json({ message: 'Erro interno ao criar post.', error: err.message });
+
+    }
+
 });
+
+
 
 app.put('/api/admin/blog/posts/:id', authenticateToken, authenticateAdmin, async (req, res) => {
-    const { id } = req.params;
-    const { is_approved } = req.body;
 
-    if (typeof is_approved !== 'boolean') return res.status(400).json({ message: 'is_approved deve ser true ou false' });
+    const { id } = req.params;
 
-    try {
-        const result = await pool.query(
-            "UPDATE blog_posts SET is_approved = $1 WHERE id = $2 RETURNING *",
-            [is_approved, id]
-        );
-        if (result.rowCount === 0) return res.status(404).json({ message: 'Post não encontrado.' });
+    const { is_approved } = req.body;
 
-        res.json({ message: `Post ${is_approved ? 'aprovado' : 'rejeitado'} com sucesso.` });
-    } catch (err) {
-        console.error('Erro ao aprovar/rejeitar post:', err);
-        res.status(500).json({ message: 'Erro interno.', error: err.message });
-    }
+
+
+    if (typeof is_approved !== 'boolean') return res.status(400).json({ message: 'is_approved deve ser true ou false' });
+
+
+
+    try {
+
+        const result = await pool.query(
+
+            "UPDATE blog_posts SET is_approved = $1 WHERE id = $2 RETURNING *",
+
+            [is_approved, id]
+
+        );
+
+        if (result.rowCount === 0) return res.status(404).json({ message: 'Post não encontrado.' });
+
+
+
+        res.json({ message: `Post ${is_approved ? 'aprovado' : 'rejeitado'} com sucesso.` });
+
+    } catch (err) {
+
+        console.error('Erro ao aprovar/rejeitar post:', err);
+
+        res.status(500).json({ message: 'Erro interno.', error: err.message });
+
+    }
+
 });
+
 // GET posts para admin
+
 app.get('/api/admin/blog/posts', authenticateToken, authenticateAdmin, async (req, res) => {
-    try {
-        const result = await pool.query(
-            `SELECT bp.id, bp.title, bp.content, bp.image_url, bp.published_at, bp.is_approved, u.username AS author
-             FROM blog_posts bp
-             JOIN users u ON u.id = bp.author_id
-             ORDER BY bp.published_at DESC`
-        );
-        res.json({ posts: result.rows });
-    } catch (err) {
-        console.error('Erro ao listar posts (admin):', err);
-        res.status(500).json({ message: 'Erro interno ao listar posts.', error: err.message });
-    }
+
+    try {
+
+        const result = await pool.query(
+
+            `SELECT bp.id, bp.title, bp.content, bp.image_url, bp.published_at, bp.is_approved, u.username AS author
+
+             FROM blog_posts bp
+
+             JOIN users u ON u.id = bp.author_id
+
+             ORDER BY bp.published_at DESC`
+
+        );
+
+        res.json({ posts: result.rows });
+
+    } catch (err) {
+
+        console.error('Erro ao listar posts (admin):', err);
+
+        res.status(500).json({ message: 'Erro interno ao listar posts.', error: err.message });
+
+    }
+
 });
+
+
+
+
 
 
 
 // -------------------- JOB DE CRÉDITO DIÁRIO --------------------
+
 async function processDailyEarnings() {
-    const client = await pool.connect();
-    try {
-        await client.query('BEGIN');
 
-        // Buscar todos investimentos ativos
-        const result = await client.query(
-            `SELECT ui.id, ui.user_id, ui.daily_earning, ui.days_remaining
-             FROM user_investments ui
-             WHERE ui.status = 'ativo'`
-        );
+    const client = await pool.connect();
 
-        for (const inv of result.rows) {
-            if (inv.days_remaining > 0) {
-                // Credita no saldo de saque
-                await client.query(
-                    `UPDATE users 
-                     SET balance_withdraw = balance_withdraw + $1,
-                         balance = balance + $1
-                     WHERE id = $2`,
-                    [inv.daily_earning, inv.user_id]
-                );
+    try {
 
-                // Atualiza investimento
-                await client.query(
-                    `UPDATE user_investments
-                     SET days_remaining = days_remaining - 1,
-                         status = CASE WHEN days_remaining - 1 <= 0 THEN 'concluido' ELSE status END
-                     WHERE id = $1`,
-                    [inv.id]
-                );
+        await client.query('BEGIN');
 
-                console.log(`💰 Crédito de Kz ${inv.daily_earning} para user ${inv.user_id}`);
-            }
-        }
 
-        await client.query('COMMIT');
-    } catch (err) {
-        await client.query('ROLLBACK');
-        console.error("Erro ao processar ganhos diários:", err);
-    } finally {
-        client.release();
-    }
+
+        // Buscar todos investimentos ativos
+
+        const result = await client.query(
+
+            `SELECT ui.id, ui.user_id, ui.daily_earning, ui.days_remaining
+
+             FROM user_investments ui
+
+             WHERE ui.status = 'ativo'`
+
+        );
+
+
+
+        for (const inv of result.rows) {
+
+            if (inv.days_remaining > 0) {
+
+                // Credita no saldo de saque
+
+                await client.query(
+
+                    `UPDATE users 
+
+                     SET balance_withdraw = balance_withdraw + $1,
+
+                         balance = balance + $1
+
+                     WHERE id = $2`,
+
+                    [inv.daily_earning, inv.user_id]
+
+                );
+
+
+
+                // Atualiza investimento
+
+                await client.query(
+
+                    `UPDATE user_investments
+
+                     SET days_remaining = days_remaining - 1,
+
+                         status = CASE WHEN days_remaining - 1 <= 0 THEN 'concluido' ELSE status END
+
+                     WHERE id = $1`,
+
+                    [inv.id]
+
+                );
+
+
+
+                console.log(`💰 Crédito de Kz ${inv.daily_earning} para user ${inv.user_id}`);
+
+            }
+
+        }
+
+
+
+        await client.query('COMMIT');
+
+    } catch (err) {
+
+        await client.query('ROLLBACK');
+
+        console.error("Erro ao processar ganhos diários:", err);
+
+    } finally {
+
+        client.release();
+
+    }
+
 }
 
+
+
 // 🔥 Endpoint manual (admin chama para rodar o job)
+
 app.post('/api/admin/process-earnings', authenticateToken, authenticateAdmin, async (req, res) => {
-    await processDailyEarnings();
-    res.json({ message: "Processamento de ganhos concluído." });
+
+    await processDailyEarnings();
+
+    res.json({ message: "Processamento de ganhos concluído." });
+
 });
 
 
 
 
+
+
+
+
+
 // ==============================================================================
+
 // INICIAR O SERVIDOR
+
 // ==============================================================================
+
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Servidor Node.js a correr em http://localhost:${PORT}`);
-    console.log('Rotas disponíveis:');
-    console.log(`- POST /api/register`);
-    console.log(`- POST /api/login`);
-    console.log(`- POST /api/logout`);
-    console.log(`- GET /api/dashboard`);
-    console.log(`- GET /api/linked_account`);
-    console.log(`- POST /api/deposit`);
-    console.log(`- POST /api/withdraw`);
-    console.log(`- POST /api/link-account`);
-    console.log(`- GET /api/withdrawals/history`);
-    console.log(`- GET /api/deposits/history`);
-    console.log(`- GET /api/investments/history`);
-    console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
-    console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
+
+    console.log(`Servidor Node.js a correr em http://localhost:${PORT}`);
+
+    console.log('Rotas disponíveis:');
+
+    console.log(`- POST /api/register`);
+
+    console.log(`- POST /api/login`);
+
+    console.log(`- POST /api/logout`);
+
+    console.log(`- GET /api/dashboard`);
+
+    console.log(`- GET /api/linked_account`);
+
+    console.log(`- POST /api/deposit`);
+
+    console.log(`- POST /api/withdraw`);
+
+    console.log(`- POST /api/link-account`);
+
+    console.log(`- GET /api/withdrawals/history`);
+
+    console.log(`- GET /api/deposits/history`);
+
+    console.log(`- GET /api/investments/history`);
+
+    console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
+
+    console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
+
 });
 
