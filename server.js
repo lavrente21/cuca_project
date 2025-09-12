@@ -479,7 +479,6 @@ app.get('/api/deposits/history', authenticateToken, async (req, res) => {
 // Histórico de Investimentos e Ganhos
 app.get('/api/investments/history', authenticateToken, async (req, res) => {
     try {
-        // Busca os investimentos originais do utilizador
         const investmentsResult = await pool.query(
             `SELECT ui.id,
                     ui.amount,
@@ -496,9 +495,8 @@ app.get('/api/investments/history', authenticateToken, async (req, res) => {
             [req.userId]
         );
 
-        // Busca todos os ganhos diários já creditados na tabela de ganhos
         const earningsResult = await pool.query(
-            `SELECT ie.amount, ie.paid_at, p.name AS package_name, ui.daily_return_rate
+            `SELECT ie.amount, ie.paid_at, p.name AS package_name, p.daily_return_rate
              FROM investment_earnings ie
              JOIN user_investments ui ON ie.investment_id = ui.id
              JOIN investment_packages p ON ui.package_id = p.id
@@ -509,7 +507,6 @@ app.get('/api/investments/history', authenticateToken, async (req, res) => {
 
         const history = [];
 
-        // Adiciona cada investimento ao histórico
         investmentsResult.rows.forEach(row => {
             history.push({
                 id: row.id,
@@ -522,7 +519,6 @@ app.get('/api/investments/history', authenticateToken, async (req, res) => {
             });
         });
 
-        // Adiciona cada ganho já pago ao histórico
         earningsResult.rows.forEach(earning => {
             history.push({
                 id: `earning-${earning.paid_at.getTime()}-${Math.random()}`,
@@ -535,7 +531,6 @@ app.get('/api/investments/history', authenticateToken, async (req, res) => {
             });
         });
 
-        // Ordena o histórico combinado pela data
         history.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
         res.json({ history });
@@ -543,7 +538,7 @@ app.get('/api/investments/history', authenticateToken, async (req, res) => {
         console.error("Erro ao buscar histórico de investimentos:", err);
         res.status(500).json({ message: "Erro ao buscar histórico de investimentos." });
     }
-}); 
+});; 
 // -------------------- VINCULAR CONTA --------------------
 app.post('/api/link-account', authenticateToken, async (req, res) => {
     const { bankName, accountNumber, accountHolder, transactionPassword } = req.body;
@@ -1139,6 +1134,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
 
