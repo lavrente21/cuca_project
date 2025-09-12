@@ -1108,11 +1108,6 @@ app.post('/api/admin/process-earnings', authenticateToken, authenticateAdmin, as
 });
 
 
-// Inicia servidor
-app.listen(PORT, () => {
-    console.log(`🚀 Servidor rodando na porta ${PORT}`);
-});
-
 
 
 // ==============================================================================
@@ -1135,6 +1130,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
 
