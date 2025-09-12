@@ -753,43 +753,74 @@ app.post('/api/link-account', authenticateToken, async (req, res) => {
 
 
 
-// -------------------- HISTÓRICOS --------------------
+// -------------------- HISTÓRICO DE INVESTIMENTOS (CORRIGIDO) --------------------
+app.get('/api/investments/history', authenticateToken, async (req, res) => {
+    try {
+        // Busca os investimentos originais do utilizador
+        const investmentsResult = await pool.query(
+            `SELECT ui.id,
+                    ui.amount,
+                    ui.daily_earning,
+                    ui.status,
+                    ui.created_at,
+                    p.name AS package_name,
+                    p.duration_days,
+                    p.daily_return_rate
+             FROM user_investments ui
+             JOIN investment_packages p ON ui.package_id = p.id
+             WHERE ui.user_id = $1
+             ORDER BY ui.created_at DESC`,
+            [req.userId]
+        );
 
-app.get('/api/withdrawals/history', authenticateToken, async (req, res) => {
+        // Busca todos os ganhos diários já creditados na tabela de ganhos
+        const earningsResult = await pool.query(
+            `SELECT ie.amount, ie.paid_at, p.name AS package_name, ui.daily_return_rate
+             FROM investment_earnings ie
+             JOIN user_investments ui ON ie.investment_id = ui.id
+             JOIN investment_packages p ON ui.package_id = p.id
+             WHERE ui.user_id = $1
+             ORDER BY ie.paid_at DESC`,
+            [req.userId]
+        );
+        
+        const history = [];
 
-    try {
+        // Adiciona cada investimento ao histórico
+        investmentsResult.rows.forEach(row => {
+            history.push({
+                id: row.id,
+                type: 'investment',
+                amount: parseFloat(row.amount),
+                packageName: row.package_name,
+                roi: `${row.daily_return_rate}% por ${row.duration_days} dias`,
+                status: row.status,
+                timestamp: row.created_at
+            });
+        });
 
-        const result = await pool.query(
+        // Adiciona cada ganho já pago ao histórico
+        earningsResult.rows.forEach(earning => {
+            history.push({
+                id: `earning-${earning.paid_at.getTime()}-${Math.random()}`, // ID único para o front-end
+                type: 'earning',
+                amount: parseFloat(earning.amount),
+                packageName: earning.package_name,
+                roi: `Retorno diário (${earning.daily_return_rate}%)`,
+                status: 'Pago',
+                timestamp: earning.paid_at
+            });
+        });
 
-            "SELECT requested_amount, fee, actual_amount, status, timestamp, account_number_used FROM withdrawals WHERE user_id = $1 ORDER BY timestamp DESC",
+        // Ordena o histórico combinado pela data
+        history.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
-            [req.userId]
-
-        );
-
-        const history = result.rows.map(item => ({
-
-            requested_amount: parseFloat(item.requested_amount),
-
-            fee: parseFloat(item.fee),
-
-            actual_amount: parseFloat(item.actual_amount),
-
-            status: item.status,
-
-            timestamp: item.timestamp ? item.timestamp.toISOString() : null,
-
-            account_number_used: item.account_number_used
-
-        }));
-
-        res.status(200).json({ history: history });
-
-    } catch (err) {
-
-        console.error('Erro ao obter histórico de saques:', err);
-
-        res.status(500).json({ error: 'Erro interno do servidor ao carregar histórico.', message: err.message });
+        res.json({ history });
+    } catch (err) {
+        console.error("Erro ao buscar histórico de investimentos:", err);
+        res.status(500).json({ message: "Erro ao buscar histórico de investimentos." });
+    }
+});
 
      // Antes de montar o histórico
 
@@ -1874,4 +1905,5 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 
 });
+
 
