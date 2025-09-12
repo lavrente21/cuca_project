@@ -1059,35 +1059,62 @@ app.get('/api/admin/blog/posts', authenticateToken, authenticateAdmin, async (re
 
 // -------------------- JOB DE CRÉDITO DIÁRIO --------------------
 async function processDailyEarnings() {
-    const client = await pool.connect();
+    let client;
     try {
+        client = await pool.connect();
         await client.query('BEGIN');
 
-        // Buscar todos investimentos ativos
-        const result = await client.query(
-            `SELECT ui.id, ui.user_id, ui.daily_earning, ui.days_remaining
-             FROM user_investments ui
-             WHERE ui.status = 'ativo'`
-        );
+        // Seleciona investimentos que estão ativos e que não foram creditados nas últimas 24 horas.
+        const activeInvestmentsQuery = `
+            SELECT id, user_id, amount, daily_earning, days_remaining, created_at, last_credited_at
+            FROM user_investments
+            WHERE status = 'ativo'
+            AND (last_credited_at IS NULL OR last_credited_at <= NOW() - INTERVAL '24 hours');
+        `;
+        const investmentsResult = await client.query(activeInvestmentsQuery);
+        const activeInvestments = investmentsResult.rows;
 
-        for (const inv of result.rows) {
-            if (inv.days_remaining > 0) {
-                // Credita no saldo de saque
-                await client.query(
-                    'UPDATE users SET balance = balance + $1, balance_withdraw = balance_withdraw + $1 WHERE id = $2',
-                    [inv.daily_earning, inv.user_id]
-                );
+        for (const inv of activeInvestments) {
+            // Verifica se a duração total já passou
+            const investmentDurationInMs = inv.days_remaining * 24 * 60 * 60 * 1000;
+            const now = new Date();
+            const timeSinceStartInMs = now.getTime() - inv.created_at.getTime();
 
-                // Atualiza investimento
+            // Evita creditar se o investimento já se encerrou
+            if (timeSinceStartInMs < investmentDurationInMs) {
+
+                // Lógica para creditar o ganho diário
+                const creditEarningQuery = `
+                    UPDATE users
+                    SET balance = balance + $1, balance_withdraw = balance_withdraw + $1
+                    WHERE id = $2;
+                `;
+                await client.query(creditEarningQuery, [inv.daily_earning, inv.user_id]);
+
+                // Lógica para registar o ganho
+                const insertEarningQuery = `
+                    INSERT INTO investment_earnings (investment_id, amount, paid_at)
+                    VALUES ($1, $2, NOW())
+                `;
+                await client.query(insertEarningQuery, [inv.id, inv.daily_earning]);
+
+                // Lógica para atualizar a contagem de dias restantes e a data do último crédito
+                const updateInvestmentQuery = `
+                    UPDATE user_investments
+                    SET days_remaining = days_remaining - 1,
+                        last_credited_at = NOW(),
+                        status = CASE WHEN days_remaining - 1 <= 0 THEN 'concluido' ELSE status END
+                    WHERE id = $1;
+                `;
+                await client.query(updateInvestmentQuery, [inv.id]);
+
+                console.log(`💰 Crédito de Kz ${inv.daily_earning} para o utilizador ${inv.user_id}`);
+            } else {
+                // Atualiza o status para concluído se a duração expirou.
                 await client.query(
-                    `UPDATE user_investments
-                     SET days_remaining = days_remaining - 1,
-                         status = CASE WHEN days_remaining - 1 <= 0 THEN 'concluido' ELSE status END
-                     WHERE id = $1`,
+                    `UPDATE user_investments SET status = 'concluido' WHERE id = $1`,
                     [inv.id]
                 );
-
-                console.log(`💰 Crédito de Kz ${inv.daily_earning} para user ${inv.user_id}`);
             }
         }
 
@@ -1096,7 +1123,9 @@ async function processDailyEarnings() {
         await client.query('ROLLBACK');
         console.error("Erro ao processar ganhos diários:", err);
     } finally {
-        client.release();
+        if (client) {
+            client.release();
+        }
     }
 }
 
