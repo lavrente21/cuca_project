@@ -1074,10 +1074,7 @@ async function processDailyEarnings() {
             if (inv.days_remaining > 0) {
                 // Credita no saldo de saque
                 await client.query(
-                    `UPDATE users 
-                     SET balance_withdraw = balance_withdraw + $1,
-                         balance = balance + $1
-                     WHERE id = $2`,
+                    'UPDATE users SET balance = balance + $1, balance_withdraw = balance_withdraw + $1 WHERE id = $2',
                     [inv.daily_earning, inv.user_id]
                 );
 
