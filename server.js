@@ -384,15 +384,16 @@ app.get('/api/investments/active', authenticateToken, async (req, res) => {
         await client.query('COMMIT');
 
         // Retorna os investimentos
-        const result = await client.query(
-            `SELECT ui.id, ui.package_id, ip.name AS package_name, ui.amount,
-                    ui.daily_earning, ui.days_remaining, ui.status, ui.created_at
-             FROM user_investments ui
-             LEFT JOIN investment_packages ip ON ui.package_id = ip.id
-             WHERE ui.user_id = $1
-             ORDER BY ui.created_at DESC`,
-            [req.userId]
-        );
+const result = await client.query(
+    `SELECT ui.id, ui.package_id, ip.name AS package_name, ui.amount,
+            ui.daily_earning, ui.days_remaining, ui.status, ui.created_at
+     FROM user_investments ui
+     LEFT JOIN investment_packages ip ON ui.package_id = ip.id
+     WHERE ui.user_id = $1
+     ORDER BY ui.created_at DESC`,
+    [req.userId]
+);
+
 
         const investments = result.rows.map(inv => ({
             id: inv.id,
@@ -1098,7 +1099,10 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- GET /api/deposits/history`);
     console.log(`- GET /api/investments/history`);
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
+ console.log(`💰 Crédito de ${totalCredit} Kz no balance_withdraw do user ${req.userId}`);
+
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
