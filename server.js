@@ -588,6 +588,40 @@ app.get('/api/withdrawals/history', authenticateToken, async (req, res) => {
     } catch (err) {
         console.error('Erro ao obter histórico de saques:', err);
         res.status(500).json({ error: 'Erro interno do servidor ao carregar histórico.', message: err.message });
+     // Antes de montar o histórico
+for (const row of result.rows) {
+    const now = new Date();
+    const createdAt = new Date(row.created_at);
+
+    const daysPassed = Math.floor((now - createdAt) / 86400000);
+    const daysToCredit = Math.min(daysPassed, row.duration_days);
+
+    // pega quantos dias já estão pagos
+    const alreadyPaidRes = await pool.query(
+        "SELECT COUNT(*) FROM investment_earnings WHERE investment_id = $1",
+        [row.id]
+    );
+    const alreadyPaid = parseInt(alreadyPaidRes.rows[0].count, 10);
+
+    // Se houver dias novos a pagar → credita no saldo_withdraw
+    if (daysToCredit > alreadyPaid) {
+        const newPayments = daysToCredit - alreadyPaid;
+
+        await pool.query(
+            "UPDATE users SET balance_withdraw = balance_withdraw + $1 WHERE id = $2",
+            [row.daily_earning * newPayments, req.userId]
+        );
+
+        // salva os pagamentos (para não repetir)
+        for (let i = alreadyPaid; i < daysToCredit; i++) {
+            await pool.query(
+                "INSERT INTO investment_earnings (id, investment_id, amount, paid_at) VALUES ($1, $2, $3, NOW())",
+                [uuidv4(), row.id, row.daily_earning]
+            );
+        }
+    }
+}
+
     }
 });
 
@@ -1020,104 +1054,65 @@ app.get('/api/admin/blog/posts', authenticateToken, authenticateAdmin, async (re
 });
 
 
-const cron = require('node-cron');
 
-// Executa todo dia à meia-noite
-cron.schedule('0 0 * * *', async () => {
+// -------------------- JOB DE CRÉDITO DIÁRIO --------------------
+async function processDailyEarnings() {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
 
-        const res = await client.query(
-            "SELECT id, user_id, daily_earning, days_remaining FROM user_investments WHERE status='ativo'"
+        // Buscar todos investimentos ativos
+        const result = await client.query(
+            `SELECT ui.id, ui.user_id, ui.daily_earning, ui.days_remaining
+             FROM user_investments ui
+             WHERE ui.status = 'ativo'`
         );
 
-        for (const inv of res.rows) {
-            // Adiciona ganho diário ao saldo de saque
-            await client.query(
-                `UPDATE users
-                 SET balance_withdraw = COALESCE(balance_withdraw,0) + $1,
-                     balance = COALESCE(balance,0) + $1
-                 WHERE id = $2`,
-                [inv.daily_earning, inv.user_id]
-            );
+        for (const inv of result.rows) {
+            if (inv.days_remaining > 0) {
+                // Credita no saldo de saque
+                await client.query(
+                    `UPDATE users 
+                     SET balance_withdraw = balance_withdraw + $1,
+                         balance = balance + $1
+                     WHERE id = $2`,
+                    [inv.daily_earning, inv.user_id]
+                );
 
-            // Decrementa dias restantes
-            const newDays = inv.days_remaining - 1;
-            const status = newDays <= 0 ? 'concluído' : 'ativo';
-            await client.query(
-                `UPDATE user_investments
-                 SET days_remaining = $1, status = $2
-                 WHERE id = $3`,
-                [Math.max(newDays,0), status, inv.id]
-            );
+                // Atualiza investimento
+                await client.query(
+                    `UPDATE user_investments
+                     SET days_remaining = days_remaining - 1,
+                         status = CASE WHEN days_remaining - 1 <= 0 THEN 'concluido' ELSE status END
+                     WHERE id = $1`,
+                    [inv.id]
+                );
+
+                console.log(`💰 Crédito de Kz ${inv.daily_earning} para user ${inv.user_id}`);
+            }
         }
 
         await client.query('COMMIT');
-        console.log('Rendimentos diários atualizados ✅');
     } catch (err) {
         await client.query('ROLLBACK');
-        console.error('Erro ao atualizar rendimentos diários:', err);
+        console.error("Erro ao processar ganhos diários:", err);
     } finally {
         client.release();
     }
+}
+
+// 🔥 Endpoint manual (admin chama para rodar o job)
+app.post('/api/admin/process-earnings', authenticateToken, authenticateAdmin, async (req, res) => {
+    await processDailyEarnings();
+    res.json({ message: "Processamento de ganhos concluído." });
 });
 
 
-
-// Executa todos os dias à meia-noite (00:00)
-cron.schedule("0 0 * * *", async () => {
-  console.log("⏰ Rodando job diário de crédito de investimentos...");
-
-  const client = await pool.connect();
-  try {
-    // Busca todos os investimentos ativos
-    const investments = await client.query(
-      `SELECT ui.id, ui.user_id, ui.daily_earning, ui.days_remaining, u.balance_withdraw
-       FROM user_investments ui
-       JOIN users u ON ui.user_id = u.id
-       WHERE ui.status = 'active'`
-    );
-
-    for (const inv of investments.rows) {
-      if (inv.days_remaining > 0) {
-        // Credita o ganho diário no saldo do usuário
-        await client.query(
-          `UPDATE users 
-           SET balance_withdraw = balance_withdraw + $1
-           WHERE id = $2`,
-          [inv.daily_earning, inv.user_id]
-        );
-
-        // Atualiza o investimento (reduz 1 dia)
-        await client.query(
-          `UPDATE user_investments 
-           SET days_remaining = days_remaining - 1
-           WHERE id = $1`,
-          [inv.id]
-        );
-
-        console.log(
-          `💰 Crédito diário: ${inv.daily_earning} para user_id=${inv.user_id}`
-        );
-      } else {
-        // Se acabou os dias, marca como finalizado
-        await client.query(
-          `UPDATE user_investments 
-           SET status = 'completed'
-           WHERE id = $1`,
-          [inv.id]
-        );
-
-        console.log(`✅ Investimento ${inv.id} concluído.`);
-      }
-    }
-  } catch (err) {
-    console.error("Erro no job diário:", err);
-  } finally {
-    client.release();
-  }
+// Inicia servidor
+app.listen(PORT, () => {
+    console.log(`🚀 Servidor rodando na porta ${PORT}`);
 });
+
 
 
 // ==============================================================================
@@ -1140,6 +1135,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
 
