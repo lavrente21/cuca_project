@@ -400,12 +400,11 @@ app.post('/api/withdraw', authenticateToken, async (req, res) => {
         const linkedAccountNumber = linkedAccountRes.rows[0]?.linked_account_number;
 
         // 8. Registrar o pedido de levantamento
-        await client.query(
-            `INSERT INTO withdrawals (id, user_id, requested_amount, fee, actual_amount, status, account_number_used) 
-             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-            [uuidv4(), userId, withdrawAmount, fee, actualAmount, 'Pendente', linkedAccountNumber]
-        );
-
+     await client.query(
+    `INSERT INTO withdrawals (id, user_id, requested_amount, fee, actual_amount, status, account_number_used, timestamp) 
+     VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
+    [uuidv4(), userId, withdrawAmount, fee, actualAmount, 'Pendente', linkedAccountNumber]
+);
         await client.query('COMMIT');
         res.json({ message: 'Pedido de levantamento registado com sucesso. Aguardando aprovação.' });
 
