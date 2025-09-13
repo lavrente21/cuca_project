@@ -97,29 +97,27 @@ async function generateUserIdCode() {
 // Middleware para autenticação de tokens
 // Middleware para autenticação de tokens
 // Middleware para autenticação de tokens
+// Linha 109 do server.js
 function authenticateToken(req, res, next) {
     const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1];
-
+    const token = authHeader && authHeader.split(' ')[1]; // Aqui o token é extraído
+    
+    // Verifique se o token existe antes de tentar a verificação
     if (token == null) {
-        console.error("ERRO DE AUTENTICAÇÃO: Token não fornecido.");
-        return res.status(401).json({ message: 'Acesso negado. Token não fornecido.' });
+        return res.status(401).send("ERRO DE AUTENTICAÇÃO: Token não fornecido.");
     }
-
+    
     jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
         if (err) {
-            if (err.name === 'TokenExpiredError') {
-                console.error("ERRO DE AUTENTICAÇÃO: Token expirado.");
-                return res.status(401).json({ message: 'A sua sessão expirou. Por favor, faça login novamente.', error: 'TokenExpiredError' });
-            }
-            console.error("ERRO DE AUTENTICAÇÃO: Token inválido.", err);
-            return res.status(403).json({ message: 'Token de autenticação inválido.' });
+            console.error("ERRO DE AUTENTICAÇÃO:", err.name, err.message);
+            return res.status(403).send("ERRO DE AUTENTICAÇÃO: Token inválido.");
         }
+        
         req.user = user;
-        console.log(`✅ Autenticação bem-sucedida para o usuário: ${req.user.id}`);
         next();
     });
 }
+
 const adminOnly = (req, res, next) => {
     // CORREÇÃO 3: Verifique o valor booleano de 'is_admin'
     // O valor 'true' é avaliado como verdadeiro em JavaScript
