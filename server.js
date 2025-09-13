@@ -347,7 +347,7 @@ app.post('/api/invest', authenticateToken, async (req, res) => {
 
 // Rota de Levantamento (Withdraw)
 app.post('/api/withdraw', authenticateToken, async (req, res) => {
-    const { amount, linkedAccountId } = req.body;
+     const { withdrawAmount, transactionPassword } = req.body;
     const userId = req.user.id;
 
     const client = await pool.connect();
