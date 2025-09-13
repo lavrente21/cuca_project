@@ -109,7 +109,25 @@ function authenticateToken(req, res, next) {
             console.error("ERRO DE AUTENTICAÇÃO: Token inválido ou expirado.", err.message);
             return res.status(403).json({ message: 'Token inválido ou expirado.' });
         }
-        req.user = user;
+        req.us// ... (dentro do middleware authenticateToken)
+
+jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, user) => {
+    if (err) {
+        // Se o erro for de TokenExpiredError, retorne uma mensagem específica
+        if (err.name === 'TokenExpiredError') {
+            console.error("ERRO DE AUTENTICAÇÃO: Token expirado.");
+            return res.status(401).json({ message: 'A sua sessão expirou. Por favor, faça login novamente.', error: 'TokenExpiredError' });
+        }
+        
+        // Para outros erros (token mal-formado, etc.), retorne a mensagem de inválido
+        console.error("ERRO DE AUTENTICAÇÃO: Token inválido.", err);
+        return res.status(403).json({ message: 'Token de autenticação inválido.' });
+    }
+    req.user = user;
+    next();
+});
+
+// ...er = user;
         console.log(`✅ Autenticação bem-sucedida para o usuário: ${req.user.id}`);
         next();
     });
