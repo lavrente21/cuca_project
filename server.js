@@ -96,6 +96,7 @@ async function generateUserIdCode() {
 
 // Middleware para autenticação de tokens
 // Middleware para autenticação de tokens
+// Middleware para autenticação de tokens
 function authenticateToken(req, res, next) {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
@@ -107,13 +108,10 @@ function authenticateToken(req, res, next) {
 
     jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
         if (err) {
-            // Se o erro for de TokenExpiredError, retorne uma mensagem específica
             if (err.name === 'TokenExpiredError') {
                 console.error("ERRO DE AUTENTICAÇÃO: Token expirado.");
                 return res.status(401).json({ message: 'A sua sessão expirou. Por favor, faça login novamente.', error: 'TokenExpiredError' });
             }
-            
-            // Para outros erros (token mal-formado, etc.), retorne a mensagem de inválido
             console.error("ERRO DE AUTENTICAÇÃO: Token inválido.", err);
             return res.status(403).json({ message: 'Token de autenticação inválido.' });
         }
@@ -192,9 +190,10 @@ app.post('/api/logout', authenticateToken, async (req, res) => {
 // -------------------- DASHBOARD USUÁRIO --------------------
 app.get('/api/dashboard', authenticateToken, async (req, res) => {
     try {
-        const result = await pool.query(
+        const client = await pool.connect();
+        const result = await client.query(
             "SELECT username, user_id_code, balance, balance_recharge, balance_withdraw, linked_account_bank_name, linked_account_number, linked_account_holder FROM users WHERE id = $1",
-            [req.userId]
+            [req.user.id] // << CORRIGIDO
         );
         const userData = result.rows[0];
         if (!userData) {
