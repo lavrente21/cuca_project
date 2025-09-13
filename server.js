@@ -164,14 +164,14 @@ app.post('/api/register', async (req, res) => {
 
 // -------------------- LOGIN --------------------
 app.post('/api/login', async (req, res) => {
-    const { email, password } = req.body;
+    const { username, password } = req.body;
     try {
-        const result = await pool.query('SELECT id, password_hash, is_admin FROM users WHERE email = $1', [email]);
+        const result = await pool.query('SELECT id, password_hash, is_admin FROM users WHERE username = $1', [username]);
         const user = result.rows[0];
 
         if (user && await bcrypt.compare(password, user.password_hash)) {
             const token = jwt.sign(
-                { userId: user.user_id, isAdmin: user.is_admin },
+                { id: user.id, isAdmin: user.is_admin },
                 process.env.JWT_SECRET,
                 { expiresIn: '1h' }
             );
