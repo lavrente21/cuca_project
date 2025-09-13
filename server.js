@@ -332,6 +332,62 @@ app.post('/api/invest', authenticateToken, async (req, res) => {
     }
 });
 
+// Rota de Levantamento (Withdraw)
+app.post('/api/withdraw', authenticateToken, async (req, res) => {
+    const { amount, linkedAccountId } = req.body;
+    const userId = req.user.id;
+
+    const client = await pool.connect();
+
+    try {
+        await client.query('BEGIN');
+
+        // 1. Validar o valor
+        if (amount <= 0 || !amount) {
+            return res.status(400).json({ message: "Valor inválido para levantamento." });
+        }
+
+        // 2. Obter saldo do usuário
+        const userRes = await client.query('SELECT balance FROM users WHERE id = $1 FOR UPDATE', [userId]);
+        const user = userRes.rows[0];
+
+        if (!user) {
+            return res.status(404).json({ message: "Usuário não encontrado." });
+        }
+
+        // 3. Verificar se o saldo é suficiente
+        if (user.balance < amount) {
+            return res.status(400).json({ message: "Saldo insuficiente para o levantamento." });
+        }
+
+        // 4. Verificar se a conta de levantamento está vinculada ao usuário
+        const linkedAccountRes = await client.query('SELECT id FROM linked_accounts WHERE id = $1 AND user_id = $2', [linkedAccountId, userId]);
+
+        if (linkedAccountRes.rowCount === 0) {
+            return res.status(400).json({ message: "Conta de levantamento inválida." });
+        }
+
+        // 5. Atualizar o saldo do usuário
+        const newBalance = user.balance - amount;
+        await client.query('UPDATE users SET balance = $1 WHERE id = $2', [newBalance, userId]);
+
+        // 6. Registrar o pedido de levantamento na tabela withdrawals
+        await client.query(
+            'INSERT INTO withdrawals (id, user_id, amount, linked_account_id, status) VALUES ($1, $2, $3, $4, $5)',
+            [uuidv4(), userId, amount, linkedAccountId, 'pendente']
+        );
+
+        await client.query('COMMIT');
+        res.json({ message: 'Pedido de levantamento registado com sucesso.' });
+
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('Erro no levantamento:', err);
+        res.status(500).json({ message: 'Erro inesperado no servidor. Por favor, tente novamente.' });
+    } finally {
+        client.release();
+    }
+});
 
 // -------------------- INVESTIMENTOS DO USUÁRIO --------------------
 app.get('/api/investments/active', authenticateToken, async (req, res) => {
