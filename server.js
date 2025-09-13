@@ -121,9 +121,10 @@ function authenticateToken(req, res, next) {
     });
 }
 const adminOnly = (req, res, next) => {
-    // req.user é criado pelo middleware authenticateToken
-    if (req.user && req.user.role === 'admin') {
-        next(); // Se o utilizador for admin, continua para a próxima função
+    // CORREÇÃO 3: Verifique o valor booleano de 'is_admin'
+    // O valor 'true' é avaliado como verdadeiro em JavaScript
+    if (req.user && req.user.is_admin) {
+        next(); // Se o utilizador for admin, continua
     } else {
         res.status(403).json({ message: 'Acesso negado: Admin apenas.' });
     }
@@ -164,21 +165,28 @@ app.post('/api/register', async (req, res) => {
 
 // -------------------- LOGIN --------------------
 // -------------------- LOGIN --------------------
+// -------------------- LOGIN --------------------
 app.post('/api/login', async (req, res) => {
     const { username, password } = req.body;
     if (!username || !password) {
         return res.status(400).json({ message: 'Por favor, preencha todos os campos.' });
     }
     try {
-        const result = await pool.query("SELECT id, password_hash, user_id_code, role FROM users WHERE username = $1", [username]);
+        // CORREÇÃO: Seleciona 'is_admin' e o 'password_hash' para verificação
+        const result = await pool.query(
+            "SELECT id, username, password_hash, user_id_code, is_admin FROM users WHERE username = $1", 
+            [username]
+        );
         const userFound = result.rows[0];
+
+        // Adiciona a verificação da palavra-passe
         if (!userFound || !(await bcrypt.compare(password, userFound.password_hash))) {
-            return res.status(401).json({ message: 'Nome de utilizador ou senha inválidos.' });
+            return res.status(401).json({ message: 'Nome de utilizador ou palavra-passe inválidos.' });
         }
         
-        // AQUI ESTÁ A CORREÇÃO: use 'userFound' em vez de 'user'
+        // CORREÇÃO: Cria o token com a propriedade 'is_admin'
         const token = jwt.sign(
-            { id: userFound.id, username: username, role: userFound.role },
+            { id: userFound.id, username: userFound.username, is_admin: userFound.is_admin },
             process.env.JWT_SECRET,
             { expiresIn: '1h' }
         );
@@ -189,7 +197,7 @@ app.post('/api/login', async (req, res) => {
             token: token,
             userId: userFound.id,
             userIdCode: userFound.user_id_code,
-            username: username
+            username: userFound.username
         });
     } catch (err) {
         console.error('Erro no login:', err);
