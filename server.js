@@ -94,20 +94,26 @@ async function generateUserIdCode() {
     return code;
 }
 
-const authenticateToken = (req, res, next) => {
+// Middleware para autenticação de tokens
+function authenticateToken(req, res, next) {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
-    if (!token) {
-        return res.status(401).json({ message: 'Não autorizado: Token ausente.' });
+
+    if (token == null) {
+        console.error("ERRO DE AUTENTICAÇÃO: Token não fornecido.");
+        return res.status(401).json({ message: 'Acesso negado. Token não fornecido.' });
     }
-    jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
+
+    jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, user) => {
         if (err) {
-            return res.status(403).json({ message: 'Não autorizado: Token inválido ou expirado.' });
+            console.error("ERRO DE AUTENTICAÇÃO: Token inválido ou expirado.", err.message);
+            return res.status(403).json({ message: 'Token inválido ou expirado.' });
         }
-        req.userId = user.id;
+        req.user = user;
+        console.log(`✅ Autenticação bem-sucedida para o usuário: ${req.user.id}`);
         next();
     });
-};
+}
 
 // ==============================================================================
 // ROTAS DO BACKEND (ENDPOINTS DA API)
