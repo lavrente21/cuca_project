@@ -166,41 +166,24 @@ app.post('/api/register', async (req, res) => {
 // -------------------- LOGIN --------------------
 // -------------------- LOGIN --------------------
 app.post('/api/login', async (req, res) => {
-    const { username, password } = req.body;
-    if (!username || !password) {
-        return res.status(400).json({ message: 'Por favor, preencha todos os campos.' });
-    }
+    const { email, password } = req.body;
     try {
-        // Seleciona as colunas necessárias para autenticação, incluindo 'is_admin'
-        const result = await pool.query(
-            "SELECT id, username, password_hash, user_id_code, is_admin FROM users WHERE username = $1", 
-            [username]
-        );
-        const userFound = result.rows[0];
+        const result = await pool.query('SELECT user_id, password_hash, is_admin FROM users WHERE email = $1', [email]);
+        const user = result.rows[0];
 
-        // 🚨 Adiciona a verificação da palavra-passe e se o utilizador existe
-        if (!userFound || !(await bcrypt.compare(password, userFound.password_hash))) {
-            return res.status(401).json({ message: 'Nome de utilizador ou palavra-passe inválidos.' });
+        if (user && await bcrypt.compare(password, user.password_hash)) {
+            const token = jwt.sign(
+                { userId: user.user_id, isAdmin: user.is_admin },
+                process.env.JWT_SECRET,
+                { expiresIn: '1h' }
+            );
+            res.json({ token });
+        } else {
+            res.status(401).json({ message: 'Credenciais inválidas.' });
         }
-        
-        // Cria o token com a propriedade 'is_admin'
-        const token = jwt.sign(
-            { id: userFound.id, username: userFound.username, is_admin: userFound.is_admin },
-            process.env.JWT_SECRET,
-            { expiresIn: '1h' }
-        );
-        
-        console.log(`Utilizador logado: ${username} com token JWT.`);
-        res.status(200).json({
-            message: 'Login bem-sucedido!',
-            token: token,
-            userId: userFound.id,
-            userIdCode: userFound.user_id_code,
-            username: userFound.username
-        });
     } catch (err) {
         console.error('Erro no login:', err);
-        res.status(500).json({ message: 'Erro interno do servidor ao tentar login.', error: err.message });
+        res.status(500).json({ message: 'Erro interno do servidor.' });
     }
 });
 
