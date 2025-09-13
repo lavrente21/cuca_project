@@ -95,6 +95,7 @@ async function generateUserIdCode() {
 }
 
 // Middleware para autenticação de tokens
+// Middleware para autenticação de tokens
 function authenticateToken(req, res, next) {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
@@ -104,30 +105,19 @@ function authenticateToken(req, res, next) {
         return res.status(401).json({ message: 'Acesso negado. Token não fornecido.' });
     }
 
-    jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, user) => {
+    jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
         if (err) {
-            console.error("ERRO DE AUTENTICAÇÃO: Token inválido ou expirado.", err.message);
-            return res.status(403).json({ message: 'Token inválido ou expirado.' });
+            // Se o erro for de TokenExpiredError, retorne uma mensagem específica
+            if (err.name === 'TokenExpiredError') {
+                console.error("ERRO DE AUTENTICAÇÃO: Token expirado.");
+                return res.status(401).json({ message: 'A sua sessão expirou. Por favor, faça login novamente.', error: 'TokenExpiredError' });
+            }
+            
+            // Para outros erros (token mal-formado, etc.), retorne a mensagem de inválido
+            console.error("ERRO DE AUTENTICAÇÃO: Token inválido.", err);
+            return res.status(403).json({ message: 'Token de autenticação inválido.' });
         }
-        req.us// ... (dentro do middleware authenticateToken)
-
-jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, user) => {
-    if (err) {
-        // Se o erro for de TokenExpiredError, retorne uma mensagem específica
-        if (err.name === 'TokenExpiredError') {
-            console.error("ERRO DE AUTENTICAÇÃO: Token expirado.");
-            return res.status(401).json({ message: 'A sua sessão expirou. Por favor, faça login novamente.', error: 'TokenExpiredError' });
-        }
-        
-        // Para outros erros (token mal-formado, etc.), retorne a mensagem de inválido
-        console.error("ERRO DE AUTENTICAÇÃO: Token inválido.", err);
-        return res.status(403).json({ message: 'Token de autenticação inválido.' });
-    }
-    req.user = user;
-    next();
-});
-
-// ...er = user;
+        req.user = user;
         console.log(`✅ Autenticação bem-sucedida para o usuário: ${req.user.id}`);
         next();
     });
