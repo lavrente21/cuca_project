@@ -161,14 +161,12 @@ app.post('/api/register', async (req, res) => {
     }
 });
 
-// -------------------- LOGIN --------------------
-// -------------------- LOGIN --------------------
-// -------------------- LOGIN --------------------
+
 // -------------------- LOGIN --------------------
 app.post('/api/login', async (req, res) => {
     const { email, password } = req.body;
     try {
-        const result = await pool.query('SELECT user_id, password_hash, is_admin FROM users WHERE email = $1', [email]);
+        const result = await pool.query('SELECT id, password_hash, is_admin FROM users WHERE email = $1', [email]);
         const user = result.rows[0];
 
         if (user && await bcrypt.compare(password, user.password_hash)) {
