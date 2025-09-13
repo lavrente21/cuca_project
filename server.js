@@ -120,6 +120,14 @@ function authenticateToken(req, res, next) {
         next();
     });
 }
+const adminOnly = (req, res, next) => {
+    // req.user é criado pelo middleware authenticateToken
+    if (req.user && req.user.role === 'admin') {
+        next(); // Se o utilizador for admin, continua para a próxima função
+    } else {
+        res.status(403).json({ message: 'Acesso negado: Admin apenas.' });
+    }
+};
 
 // ==============================================================================
 // ROTAS DO BACKEND (ENDPOINTS DA API)
@@ -155,18 +163,26 @@ app.post('/api/register', async (req, res) => {
 });
 
 // -------------------- LOGIN --------------------
+// -------------------- LOGIN --------------------
 app.post('/api/login', async (req, res) => {
     const { username, password } = req.body;
     if (!username || !password) {
         return res.status(400).json({ message: 'Por favor, preencha todos os campos.' });
     }
     try {
-        const result = await pool.query("SELECT id, password_hash, user_id_code FROM users WHERE username = $1", [username]);
+        const result = await pool.query("SELECT id, password_hash, user_id_code, role FROM users WHERE username = $1", [username]);
         const userFound = result.rows[0];
         if (!userFound || !(await bcrypt.compare(password, userFound.password_hash))) {
             return res.status(401).json({ message: 'Nome de utilizador ou senha inválidos.' });
         }
-        const token = jwt.sign({ id: userFound.id }, process.env.JWT_SECRET, { expiresIn: '24h' });
+        
+        // AQUI ESTÁ A CORREÇÃO: use 'userFound' em vez de 'user'
+        const token = jwt.sign(
+            { id: userFound.id, username: username, role: userFound.role },
+            process.env.JWT_SECRET,
+            { expiresIn: '1h' }
+        );
+        
         console.log(`Utilizador logado: ${username} com token JWT.`);
         res.status(200).json({
             message: 'Login bem-sucedido!',
