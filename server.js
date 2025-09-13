@@ -361,6 +361,11 @@ app.post('/api/withdraw', authenticateToken, async (req, res) => {
         if (!withdrawAmount || isNaN(withdrawAmount) || withdrawAmount <= 0) {
             return res.status(400).json({ message: "Valor inválido para levantamento." });
         }
+        // **NOVA VALIDAÇÃO AQUI**
+        const MIN_WITHDRAW_AMOUNT = 1200;
+        if (withdrawAmount < MIN_WITHDRAW_AMOUNT) {
+            return res.status(400).json({ message: `O valor mínimo para levantamento é Kz ${MIN_WITHDRAW_AMOUNT.toFixed(2).replace('.', ',')}.` });
+        }
 
         // 2. Obter saldo do usuário
         const userRes = await client.query('SELECT balance_withdraw FROM users WHERE id = $1 FOR UPDATE', [userId]);
