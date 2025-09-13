@@ -166,25 +166,26 @@ app.post('/api/register', async (req, res) => {
 // -------------------- LOGIN --------------------
 // -------------------- LOGIN --------------------
 // -------------------- LOGIN --------------------
+// -------------------- LOGIN --------------------
 app.post('/api/login', async (req, res) => {
     const { username, password } = req.body;
     if (!username || !password) {
         return res.status(400).json({ message: 'Por favor, preencha todos os campos.' });
     }
     try {
-        // CORREÇÃO: Seleciona 'is_admin' e o 'password_hash' para verificação
+        // Seleciona as colunas necessárias para autenticação, incluindo 'is_admin'
         const result = await pool.query(
             "SELECT id, username, password_hash, user_id_code, is_admin FROM users WHERE username = $1", 
             [username]
         );
         const userFound = result.rows[0];
 
-        // Adiciona a verificação da palavra-passe
+        // 🚨 Adiciona a verificação da palavra-passe e se o utilizador existe
         if (!userFound || !(await bcrypt.compare(password, userFound.password_hash))) {
             return res.status(401).json({ message: 'Nome de utilizador ou palavra-passe inválidos.' });
         }
         
-        // CORREÇÃO: Cria o token com a propriedade 'is_admin'
+        // Cria o token com a propriedade 'is_admin'
         const token = jwt.sign(
             { id: userFound.id, username: userFound.username, is_admin: userFound.is_admin },
             process.env.JWT_SECRET,
