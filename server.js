@@ -164,9 +164,9 @@ app.post('/api/register', async (req, res) => {
 
 // -------------------- LOGIN --------------------
 app.post('/api/login', async (req, res) => {
-    const { username, password } = req.body;
+    const { username, password } = req.body; // <--- Troca de 'email' para 'username'
     try {
-        const result = await pool.query('SELECT id, password_hash, is_admin FROM users WHERE username = $1', [username]);
+        const result = await pool.query('SELECT id, password_hash, is_admin FROM users WHERE username = $1', [username]); // <--- Corrigido para 'id' e 'username'
         const user = result.rows[0];
 
         if (user && await bcrypt.compare(password, user.password_hash)) {
@@ -1253,6 +1253,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
 
