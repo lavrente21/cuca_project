@@ -347,6 +347,7 @@ app.post('/api/invest', authenticateToken, async (req, res) => {
 
 // Rota de Levantamento (Withdraw)
 // Rota de Levantamento (Withdraw)
+// Rota de Levantamento (Withdraw)
 app.post('/api/withdraw', authenticateToken, async (req, res) => {
     const { withdrawAmount, transactionPassword } = req.body;
     const userId = req.user.id;
@@ -356,8 +357,8 @@ app.post('/api/withdraw', authenticateToken, async (req, res) => {
     try {
         await client.query('BEGIN');
 
-        // 1. Validar o valor (agora usando a variável correta)
-        if (withdrawAmount <= 0 || !withdrawAmount) {
+        // 1. Validar o valor
+        if (!withdrawAmount || isNaN(withdrawAmount) || withdrawAmount <= 0) {
             return res.status(400).json({ message: "Valor inválido para levantamento." });
         }
 
@@ -369,40 +370,36 @@ app.post('/api/withdraw', authenticateToken, async (req, res) => {
             return res.status(404).json({ message: "Usuário não encontrado." });
         }
 
-        // 3. Verificar se o saldo é suficiente (usando a variável correta)
+        // 3. Verificar se o saldo é suficiente
         if (user.balance_withdraw < withdrawAmount) {
             return res.status(400).json({ message: "Saldo insuficiente para o levantamento." });
         }
 
-        // 4. (Este passo não é necessário, pois o frontend não envia linkedAccountId)
-        // O frontend já valida se a conta está vinculada.
-        // Se desejar, pode manter a lógica de verificação da senha de transação aqui.
-        // Por agora, vamos simplificar.
-
-        // 5. Verificar a senha de transação
+        // 4. Obter a senha de transação para validação
         const transactionPasswordRes = await client.query('SELECT transaction_password_hash FROM users WHERE id = $1', [userId]);
         const transactionPasswordHash = transactionPasswordRes.rows[0].transaction_password_hash;
 
-        if (!(await bcrypt.compare(transactionPassword, transactionPasswordHash))) {
+        if (!transactionPasswordHash || !(await bcrypt.compare(transactionPassword, transactionPasswordHash))) {
              return res.status(401).json({ message: "Senha de transação incorreta." });
         }
 
-        // 6. Calcular a taxa e o valor final
+        // 5. Calcular a taxa e o valor final
         const WITHDRAW_FEE_PERCENTAGE = 0.05;
-        const fee = withdrawAmount * WITHDRAW_FEE_PERCENTAGE;
-        const actualAmount = withdrawAmount - fee;
+        const fee = parseFloat((withdrawAmount * WITHDRAW_FEE_PERCENTAGE).toFixed(2));
+        const actualAmount = parseFloat((withdrawAmount - fee).toFixed(2));
 
-        // 7. Atualizar o saldo do usuário (do campo 'balance_withdraw')
-        const newBalance = user.balance_withdraw - withdrawAmount;
+        // 6. Atualizar o saldo do usuário
+        const newBalance = parseFloat((user.balance_withdraw - withdrawAmount).toFixed(2));
         await client.query('UPDATE users SET balance_withdraw = $1 WHERE id = $2', [newBalance, userId]);
 
-        // 8. Registrar o pedido de levantamento na tabela withdrawals
+        // 7. Obter o número da conta vinculada
         const linkedAccountRes = await client.query(
             "SELECT linked_account_number FROM users WHERE id = $1",
             [userId]
         );
-        const linkedAccountNumber = linkedAccountRes.rows[0].linked_account_number;
+        const linkedAccountNumber = linkedAccountRes.rows[0]?.linked_account_number;
 
+        // 8. Registrar o pedido de levantamento
         await client.query(
             `INSERT INTO withdrawals (id, user_id, requested_amount, fee, actual_amount, status, account_number_used) 
              VALUES ($1, $2, $3, $4, $5, $6, $7)`,
