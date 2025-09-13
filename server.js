@@ -346,8 +346,9 @@ app.post('/api/invest', authenticateToken, async (req, res) => {
 });
 
 // Rota de Levantamento (Withdraw)
+// Rota de Levantamento (Withdraw)
 app.post('/api/withdraw', authenticateToken, async (req, res) => {
-     const { withdrawAmount, transactionPassword } = req.body;
+    const { withdrawAmount, transactionPassword } = req.body;
     const userId = req.user.id;
 
     const client = await pool.connect();
@@ -355,43 +356,61 @@ app.post('/api/withdraw', authenticateToken, async (req, res) => {
     try {
         await client.query('BEGIN');
 
-        // 1. Validar o valor
-        if (amount <= 0 || !amount) {
+        // 1. Validar o valor (agora usando a variável correta)
+        if (withdrawAmount <= 0 || !withdrawAmount) {
             return res.status(400).json({ message: "Valor inválido para levantamento." });
         }
 
         // 2. Obter saldo do usuário
-        const userRes = await client.query('SELECT balance FROM users WHERE id = $1 FOR UPDATE', [userId]);
+        const userRes = await client.query('SELECT balance_withdraw FROM users WHERE id = $1 FOR UPDATE', [userId]);
         const user = userRes.rows[0];
 
         if (!user) {
             return res.status(404).json({ message: "Usuário não encontrado." });
         }
 
-        // 3. Verificar se o saldo é suficiente
-        if (user.balance < amount) {
+        // 3. Verificar se o saldo é suficiente (usando a variável correta)
+        if (user.balance_withdraw < withdrawAmount) {
             return res.status(400).json({ message: "Saldo insuficiente para o levantamento." });
         }
 
-        // 4. Verificar se a conta de levantamento está vinculada ao usuário
-        const linkedAccountRes = await client.query('SELECT id FROM linked_accounts WHERE id = $1 AND user_id = $2', [linkedAccountId, userId]);
+        // 4. (Este passo não é necessário, pois o frontend não envia linkedAccountId)
+        // O frontend já valida se a conta está vinculada.
+        // Se desejar, pode manter a lógica de verificação da senha de transação aqui.
+        // Por agora, vamos simplificar.
 
-        if (linkedAccountRes.rowCount === 0) {
-            return res.status(400).json({ message: "Conta de levantamento inválida." });
+        // 5. Verificar a senha de transação
+        const transactionPasswordRes = await client.query('SELECT transaction_password_hash FROM users WHERE id = $1', [userId]);
+        const transactionPasswordHash = transactionPasswordRes.rows[0].transaction_password_hash;
+
+        if (!(await bcrypt.compare(transactionPassword, transactionPasswordHash))) {
+             return res.status(401).json({ message: "Senha de transação incorreta." });
         }
 
-        // 5. Atualizar o saldo do usuário
-        const newBalance = user.balance - amount;
-        await client.query('UPDATE users SET balance = $1 WHERE id = $2', [newBalance, userId]);
+        // 6. Calcular a taxa e o valor final
+        const WITHDRAW_FEE_PERCENTAGE = 0.05;
+        const fee = withdrawAmount * WITHDRAW_FEE_PERCENTAGE;
+        const actualAmount = withdrawAmount - fee;
 
-        // 6. Registrar o pedido de levantamento na tabela withdrawals
+        // 7. Atualizar o saldo do usuário (do campo 'balance_withdraw')
+        const newBalance = user.balance_withdraw - withdrawAmount;
+        await client.query('UPDATE users SET balance_withdraw = $1 WHERE id = $2', [newBalance, userId]);
+
+        // 8. Registrar o pedido de levantamento na tabela withdrawals
+        const linkedAccountRes = await client.query(
+            "SELECT linked_account_number FROM users WHERE id = $1",
+            [userId]
+        );
+        const linkedAccountNumber = linkedAccountRes.rows[0].linked_account_number;
+
         await client.query(
-            'INSERT INTO withdrawals (id, user_id, amount, linked_account_id, status) VALUES ($1, $2, $3, $4, $5)',
-            [uuidv4(), userId, amount, linkedAccountId, 'pendente']
+            `INSERT INTO withdrawals (id, user_id, requested_amount, fee, actual_amount, status, account_number_used) 
+             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            [uuidv4(), userId, withdrawAmount, fee, actualAmount, 'Pendente', linkedAccountNumber]
         );
 
         await client.query('COMMIT');
-        res.json({ message: 'Pedido de levantamento registado com sucesso.' });
+        res.json({ message: 'Pedido de levantamento registado com sucesso. Aguardando aprovação.' });
 
     } catch (err) {
         await client.query('ROLLBACK');
@@ -401,7 +420,6 @@ app.post('/api/withdraw', authenticateToken, async (req, res) => {
         client.release();
     }
 });
-
 // -------------------- INVESTIMENTOS DO USUÁRIO --------------------
 app.get('/api/investments/active', authenticateToken, async (req, res) => {
     const client = await pool.connect();
