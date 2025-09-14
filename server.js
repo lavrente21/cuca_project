@@ -713,6 +713,39 @@ app.get('/api/withdrawals/history', authenticateToken, async (req, res) => {
             "SELECT requested_amount, fee, actual_amount, status, timestamp, account_number_used FROM withdrawals WHERE user_id = $1 ORDER BY timestamp DESC",
             [req.userId]
         );
+
+        // 🔹 Aqui você pode processar ganhos diários antes de montar o histórico
+        for (const row of result.rows) {
+            const now = new Date();
+            const createdAt = new Date(row.created_at);
+
+            const daysPassed = Math.floor((now - createdAt) / 86400000);
+            const daysToCredit = Math.min(daysPassed, row.duration_days);
+
+            const alreadyPaidRes = await pool.query(
+                "SELECT COUNT(*) FROM investment_earnings WHERE investment_id = $1",
+                [row.id]
+            );
+            const alreadyPaid = parseInt(alreadyPaidRes.rows[0].count, 10);
+
+            if (daysToCredit > alreadyPaid) {
+                const newPayments = daysToCredit - alreadyPaid;
+
+                await pool.query(
+                    "UPDATE users SET balance_withdraw = balance_withdraw + $1 WHERE id = $2",
+                    [row.daily_earning * newPayments, req.userId]
+                );
+
+                for (let i = alreadyPaid; i < daysToCredit; i++) {
+                    await pool.query(
+                        "INSERT INTO investment_earnings (id, investment_id, amount, paid_at) VALUES ($1, $2, $3, NOW())",
+                        [uuidv4(), row.id, row.daily_earning]
+                    );
+                }
+            }
+        }
+
+        // 🔹 Monta o histórico para enviar ao frontend
         const history = result.rows.map(item => ({
             requested_amount: parseFloat(item.requested_amount),
             fee: parseFloat(item.fee),
@@ -721,46 +754,14 @@ app.get('/api/withdrawals/history', authenticateToken, async (req, res) => {
             timestamp: item.timestamp ? item.timestamp.toISOString() : null,
             account_number_used: item.account_number_used
         }));
-        res.status(200).json({ history: history });
+
+        res.status(200).json({ history });
     } catch (err) {
         console.error('Erro ao obter histórico de saques:', err);
         res.status(500).json({ error: 'Erro interno do servidor ao carregar histórico.', message: err.message });
-     // Antes de montar o histórico
-for (const row of result.rows) {
-    const now = new Date();
-    const createdAt = new Date(row.created_at);
-
-    const daysPassed = Math.floor((now - createdAt) / 86400000);
-    const daysToCredit = Math.min(daysPassed, row.duration_days);
-
-    // pega quantos dias já estão pagos
-    const alreadyPaidRes = await pool.query(
-        "SELECT COUNT(*) FROM investment_earnings WHERE investment_id = $1",
-        [row.id]
-    );
-    const alreadyPaid = parseInt(alreadyPaidRes.rows[0].count, 10);
-
-    // Se houver dias novos a pagar → credita no saldo_withdraw
-    if (daysToCredit > alreadyPaid) {
-        const newPayments = daysToCredit - alreadyPaid;
-
-        await pool.query(
-            "UPDATE users SET balance_withdraw = balance_withdraw + $1 WHERE id = $2",
-            [row.daily_earning * newPayments, req.userId]
-        );
-
-        // salva os pagamentos (para não repetir)
-        for (let i = alreadyPaid; i < daysToCredit; i++) {
-            await pool.query(
-                "INSERT INTO investment_earnings (id, investment_id, amount, paid_at) VALUES ($1, $2, $3, NOW())",
-                [uuidv4(), row.id, row.daily_earning]
-            );
-        }
-    }
-}
-
     }
 });
+
 
 app.get('/api/deposits/history', authenticateToken, async (req, res) => {
     try {
@@ -1320,6 +1321,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
 
