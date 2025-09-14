@@ -122,14 +122,12 @@ function authenticateToken(req, res, next) {
 // A sua nova solução: Verifica se o valor é a string "verdadeiro"
 // A sua solução final e robusta
 const adminOnly = (req, res, next) => {
-    // Usa o operador '!!' para converter qualquer valor "verdadeiro"
-    // (truthy value) para o booleano true
-    if (req.user && !!req.user.isAdmin) {
-        next();
-    } else {
-        res.status(403).json({ message: 'Acesso negado: Admin apenas.' });
-    }
+  if (req.user && (req.user.isAdmin === true || req.user.isAdmin === "verdadeiro" || req.user.isAdmin === 1)) {
+    return next();
+  }
+  return res.status(403).json({ message: 'Acesso negado: Admin apenas.' });
 };
+
 
 // ==============================================================================
 // ROTAS DO BACKEND (ENDPOINTS DA API)
@@ -176,7 +174,8 @@ app.post('/api/login', async (req, res) => {
         if (user && await bcrypt.compare(password, user.password_hash)) {
             // AQUI ESTÁ A CORREÇÃO
             // Converta user.is_admin para um booleano explícito
-            const isAdmin = user.is_admin === true;
+// Corrige aqui
+const isAdmin = user.is_admin === true || user.is_admin === "verdadeiro" || user.is_admin === 1;
 
             const token = jwt.sign(
                 { id: user.id, isAdmin: isAdmin },
@@ -1261,6 +1260,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
 
