@@ -1275,22 +1275,29 @@ cron.schedule('* * * * *', processDailyEarnings);
 
 
 
-
 app.get('/api/referrals', authenticateToken, async (req, res) => {
     try {
-        const referrals = await pool.query(
-            `SELECT u.id, u.username, d.amount AS deposit_amount, d.status AS deposit_status
-             FROM users u
-             LEFT JOIN deposits d ON u.id = d.user_id
-             WHERE u.referred_by = $1`,
-            [req.userId]
-        );
-        res.json({ referrals: referrals.rows });
+        const result = await pool.query(`
+            SELECT 
+                u.id,
+                u.username,
+                COALESCE(SUM(d.amount), 0) AS total_deposit,
+                COUNT(d.id) AS num_deposits,
+                SUM(CASE WHEN d.status = 'Aprovado' THEN d.amount * 0.10 ELSE 0 END) AS total_commission_earned
+            FROM users u
+            LEFT JOIN deposits d ON u.id = d.user_id
+            WHERE u.referred_by = $1
+            GROUP BY u.id, u.username
+            ORDER BY total_deposit DESC
+        `, [req.userId]);
+
+        res.json({ referrals: result.rows });
     } catch (err) {
         console.error('Erro ao buscar referrals:', err);
         res.status(500).json({ error: 'Erro interno ao buscar referrals.' });
     }
 });
+
 
 
 // ==============================================================================
@@ -1313,6 +1320,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
 
