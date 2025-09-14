@@ -118,6 +118,19 @@ function authenticateToken(req, res, next) {
         next();
     });
 }
+const authenticateAdmin = async (req, res, next) => {
+    try {
+        const result = await pool.query("SELECT is_admin FROM users WHERE id = $1", [req.user.id]);
+        if (!result.rows[0] || !result.rows[0].is_admin) {
+            return res.status(403).json({ message: 'Acesso negado: Admin apenas.' });
+        }
+        next();
+    } catch (err) {
+        console.error('Erro ao autenticar admin:', err);
+        res.status(500).json({ message: 'Erro interno ao verificar admin.' });
+    }
+};
+
 
 // A sua nova solução: Verifica se o valor é a string "verdadeiro"
 // A sua solução final e robusta
@@ -1260,6 +1273,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
 
