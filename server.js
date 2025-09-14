@@ -1395,6 +1395,87 @@ app.get('/api/referrals', authenticateToken, async (req, res) => {
     }
 });
 
+// /api/team/stats
+app.get('/api/team/stats', authenticateToken, async (req, res) => {
+    try {
+        const userId = req.user.id; // UUID do utilizador logado
+
+        // ===== NÍVEL 1 =====
+        const nivel1 = await pool.query(
+            `SELECT id FROM users WHERE referred_by = $1`,
+            [userId]
+        );
+        const nivel1Ids = nivel1.rows.map(r => r.id);
+
+        const nivel1Active = await pool.query(
+            `SELECT DISTINCT u.id
+             FROM users u
+             JOIN investments i ON i.user_id = u.id
+             WHERE u.referred_by = $1 AND i.status = 'active'`,
+            [userId]
+        );
+
+        // ===== NÍVEL 2 =====
+        let nivel2Ids = [];
+        let nivel2ActiveCount = 0;
+        if (nivel1Ids.length > 0) {
+            const nivel2 = await pool.query(
+                `SELECT id FROM users WHERE referred_by = ANY($1::uuid[])`,
+                [nivel1Ids]
+            );
+            nivel2Ids = nivel2.rows.map(r => r.id);
+
+            const nivel2Active = await pool.query(
+                `SELECT DISTINCT u.id
+                 FROM users u
+                 JOIN investments i ON i.user_id = u.id
+                 WHERE u.referred_by = ANY($1::uuid[]) AND i.status = 'active'`,
+                [nivel1Ids]
+            );
+            nivel2ActiveCount = nivel2Active.rowCount;
+        }
+
+        // ===== NÍVEL 3 =====
+        let nivel3Ids = [];
+        let nivel3ActiveCount = 0;
+        if (nivel2Ids.length > 0) {
+            const nivel3 = await pool.query(
+                `SELECT id FROM users WHERE referred_by = ANY($1::uuid[])`,
+                [nivel2Ids]
+            );
+            nivel3Ids = nivel3.rows.map(r => r.id);
+
+            const nivel3Active = await pool.query(
+                `SELECT DISTINCT u.id
+                 FROM users u
+                 JOIN investments i ON i.user_id = u.id
+                 WHERE u.referred_by = ANY($1::uuid[]) AND i.status = 'active'`,
+                [nivel2Ids]
+            );
+            nivel3ActiveCount = nivel3Active.rowCount;
+        }
+
+        res.json({
+            nivel1: {
+                total: nivel1.rowCount,
+                ativos: nivel1Active.rowCount
+            },
+            nivel2: {
+                total: nivel2Ids.length,
+                ativos: nivel2ActiveCount
+            },
+            nivel3: {
+                total: nivel3Ids.length,
+                ativos: nivel3ActiveCount
+            }
+        });
+
+    } catch (err) {
+        console.error("❌ Erro ao buscar estatísticas da equipe:", err);
+        res.status(500).json({ error: "Erro ao buscar estatísticas da equipe" });
+    }
+});
+
 
 
 // ==============================================================================
@@ -1417,6 +1498,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
 
