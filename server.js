@@ -193,16 +193,29 @@ app.post('/api/register', async (req, res) => {
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         `;
         await pool.query(sql, [
-            userId, username, passwordHash, transactionPasswordHash,
-            0.0, 0.0, 0.0, userIdCode, referredById
+            userId,
+            username,
+            passwordHash,
+            transactionPasswordHash,
+            0.0, 0.0, 0.0,
+            userIdCode,
+            referredById
         ]);
 
-        console.log(`Utilizador registado: ${username} com ID: ${userId}`);
-        res.status(201).json({ message: 'Cadastro realizado com sucesso!', userId: userId });
+        console.log(`✅ Utilizador registado: ${username} | ID: ${userId} | ReferredBy: ${referredById}`);
+        res.status(201).json({
+            message: 'Cadastro realizado com sucesso!',
+            userId: userId,
+            userIdCode: userIdCode,
+            referredBy: referredById
+        });
 
     } catch (err) {
-        console.error('Erro no registo de utilizador:', err);
-        res.status(500).json({ message: 'Erro interno do servidor ao registar utilizador.', error: err.message });
+        console.error('❌ Erro no registo de utilizador:', err);
+        res.status(500).json({
+            message: 'Erro interno do servidor ao registar utilizador.',
+            error: err.message
+        });
     }
 });
 
@@ -1387,6 +1400,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
 
