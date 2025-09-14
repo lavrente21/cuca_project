@@ -137,49 +137,69 @@ const authenticateAdmin = async (req, res, next) => {
     }
 };
 
+async function generateUserIdCode() {
+    let code;
+    let exists = true;
+    while (exists) {
+        code = Math.random().toString(36).substring(2, 8).toUpperCase(); // 6 caracteres
+        const result = await pool.query("SELECT id FROM users WHERE user_id_code = $1", [code]);
+        if (result.rows.length === 0) exists = false;
+    }
+    return code;
+}
+
 // ==============================================================================
 // ROTAS DO BACKEND (ENDPOINTS DA API)
 // ==============================================================================
 
 // -------------------- REGISTRO --------------------
 app.post('/api/register', async (req, res) => {
-    const { username, password, transactionPassword } = req.body;
+    const { username, password, transactionPassword, referralCode } = req.body;
+
     if (!username || !password || !transactionPassword) {
         return res.status(400).json({ message: 'Por favor, preencha todos os campos obrigatórios.' });
     }
+
     try {
+        // Verifica se o username já existe
         const existing = await pool.query("SELECT id FROM users WHERE username = $1", [username]);
         if (existing.rows.length > 0) {
             return res.status(409).json({ message: 'Nome de utilizador já existe.' });
         }
-     const { referralCode } = req.body;
 
-let referredById = null;
-if (referralCode) {
-    const refResult = await pool.query(
-        "SELECT id FROM users WHERE user_id_code = $1",
-        [referralCode]
-    );
-    if (refResult.rows.length > 0) {
-        referredById = refResult.rows[0].id;
-    } else {
-        return res.status(400).json({ message: "Código de referral inválido." });
-    }
-}
+        // Verifica se o referralCode é válido
+        let referredById = null;
+        if (referralCode) {
+            const refResult = await pool.query(
+                "SELECT id FROM users WHERE user_id_code = $1",
+                [referralCode]
+            );
+            if (refResult.rows.length > 0) {
+                referredById = refResult.rows[0].id;
+            } else {
+                return res.status(400).json({ message: "Código de referral inválido." });
+            }
+        }
 
-        const userId = uuidv4();
+        // Gera o código único do usuário
         const userIdCode = await generateUserIdCode();
+        const userId = uuidv4();
         const passwordHash = await bcrypt.hash(password, 10);
         const transactionPasswordHash = await bcrypt.hash(transactionPassword, 10);
+
         const sql = `
-    INSERT INTO users
-    (id, username, password_hash, transaction_password_hash, balance, balance_recharge, balance_withdraw, user_id_code, referred_by)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-`;
-await pool.query(sql, [userId, username, passwordHash, transactionPasswordHash, 0.0, 0.0, 0.0, userIdCode, referredById]);
+            INSERT INTO users
+            (id, username, password_hash, transaction_password_hash, balance, balance_recharge, balance_withdraw, user_id_code, referred_by)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        `;
+        await pool.query(sql, [
+            userId, username, passwordHash, transactionPasswordHash,
+            0.0, 0.0, 0.0, userIdCode, referredById
+        ]);
 
         console.log(`Utilizador registado: ${username} com ID: ${userId}`);
         res.status(201).json({ message: 'Cadastro realizado com sucesso!', userId: userId });
+
     } catch (err) {
         console.error('Erro no registo de utilizador:', err);
         res.status(500).json({ message: 'Erro interno do servidor ao registar utilizador.', error: err.message });
@@ -187,26 +207,38 @@ await pool.query(sql, [userId, username, passwordHash, transactionPasswordHash, 
 });
 
 
+
 // -------------------- LOGIN --------------------
 // Linha 181 do seu ficheiro server.js
 app.post('/api/login', async (req, res) => {
     const { username, password } = req.body;
+
     try {
-        const result = await pool.query('SELECT id, password_hash, is_admin FROM users WHERE username = $1', [username]);
+        const result = await pool.query(
+            'SELECT id, username, password_hash, user_id_code, is_admin FROM users WHERE username = $1',
+            [username]
+        );
         const user = result.rows[0];
 
         if (user && await bcrypt.compare(password, user.password_hash)) {
-            // AQUI ESTÁ A CORREÇÃO
             // Converta user.is_admin para um booleano explícito
-// Corrige aqui
-const isAdmin = user.is_admin === true || user.is_admin === "verdadeiro" || user.is_admin === 1;
+            const isAdmin = user.is_admin === true || user.is_admin === "verdadeiro" || user.is_admin === 1;
 
+            // Cria o JWT
             const token = jwt.sign(
                 { id: user.id, isAdmin: isAdmin },
                 process.env.JWT_SECRET,
                 { expiresIn: '1h' }
             );
-            res.json({ token });
+
+            // Retorna todos os dados esperados pelo frontend
+            res.json({
+                token,
+                username: user.username,
+                userId: user.id,
+                userIdCode: user.user_id_code, // <-- referral code
+                isAdmin
+            });
         } else {
             res.status(401).json({ message: 'Credenciais inválidas.' });
         }
@@ -1355,6 +1387,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
 
