@@ -194,6 +194,9 @@ app.post('/api/register', async (req, res) => {
                 return res.status(400).json({ message: "Código de referral inválido." });
             }
         }
+     console.log("➡️ referralCode recebido:", referralCode);
+console.log("➡️ referredById resolvido:", referredById);
+
 
         // Gera o código único do usuário
         const userIdCode = await generateUserIdCode();
@@ -1414,6 +1417,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
 
