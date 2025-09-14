@@ -120,7 +120,10 @@ function authenticateToken(req, res, next) {
 }
 const authenticateAdmin = async (req, res, next) => {
     try {
-        const result = await pool.query("SELECT is_admin FROM users WHERE id = $1", [req.user.id]);
+        const result = await pool.query(
+            "SELECT is_admin FROM users WHERE id = $1",
+            [req.user.id]
+        );
         if (!result.rows[0] || !result.rows[0].is_admin) {
             return res.status(403).json({ message: 'Acesso negado: Admin apenas.' });
         }
@@ -130,6 +133,7 @@ const authenticateAdmin = async (req, res, next) => {
         res.status(500).json({ message: 'Erro interno ao verificar admin.' });
     }
 };
+
 
 
 
@@ -777,19 +781,7 @@ app.get('/api/investments/history', authenticateToken, async (req, res) => {
 // ROTAS ADMIN
 // ==============================================================================
 
-// Middleware para verificar admin
-const authenticateAdmin = async (req, res, next) => {
-    try {
-        const result = await pool.query("SELECT is_admin FROM users WHERE id = $1", [req.userId]);
-        if (!result.rows[0] || !result.rows[0].is_admin) {
-            return res.status(403).json({ message: 'Acesso negado: Admin apenas.' });
-        }
-        next();
-    } catch (err) {
-        console.error('Erro ao autenticar admin:', err);
-        res.status(500).json({ message: 'Erro interno ao verificar admin.' });
-    }
-};
+
 
 // [Aqui entram todas as rotas admin que enviei na mensagem anterior]
 // (Listagem de usuários, depósitos, saques, pacotes de investimento, posts, dashboard admin)
@@ -1266,6 +1258,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
 
