@@ -121,8 +121,8 @@ function authenticateToken(req, res, next) {
 const adminOnly = (req, res, next) => {
     // CORREÇÃO 3: Verifique o valor booleano de 'is_admin'
     // O valor 'true' é avaliado como verdadeiro em JavaScript
-    if (req.user && req.user.is_admin) {
-        next(); // Se o utilizador for admin, continua
+if (req.user && req.user.isAdmin) {
+ next(); // Se o utilizador for admin, continua
     } else {
         res.status(403).json({ message: 'Acesso negado: Admin apenas.' });
     }
@@ -1253,6 +1253,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
 
