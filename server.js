@@ -120,13 +120,14 @@ function authenticateToken(req, res, next) {
 }
 
 const adminOnly = (req, res, next) => {
-    // CORREÇÃO 3: Verifique o valor booleano de 'is_admin'
-    // O valor 'true' é avaliado como verdadeiro em JavaScript
-if (req.user && req.user.isAdmin) {
- next(); // Se o utilizador for admin, continua
-    } else {
-        res.status(403).json({ message: 'Acesso negado: Admin apenas.' });
-    }
+    // Usa a conversão para booleano para garantir que o valor é tratado corretamente
+    const isAdmin = !!(req.user && req.user.isAdmin);
+    console.log("Verificando permissões de admin. É Admin?", isAdmin);
+    if (isAdmin) {
+        next();
+    } else {
+        res.status(403).json({ message: 'Acesso negado: Admin apenas.' });
+    }
 };
 
 // ==============================================================================
@@ -1259,6 +1260,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
 
