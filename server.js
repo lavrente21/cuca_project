@@ -170,13 +170,20 @@ app.post('/api/register', async (req, res) => {
         // Verifica se o referralCode é válido
         let referredById = null;
         if (referralCode) {
+            console.log("📩 referralCode recebido:", referralCode);
+
             const refResult = await pool.query(
-                "SELECT id FROM users WHERE user_id_code = $1",
+                "SELECT id, username, user_id_code FROM users WHERE user_id_code = $1",
                 [referralCode]
             );
+
+            console.log("🔎 Resultado da busca do referralCode:", refResult.rows);
+
             if (refResult.rows.length > 0) {
                 referredById = refResult.rows[0].id;
+                console.log(`✅ referralCode válido → User: ${refResult.rows[0].username} | ID: ${referredById}`);
             } else {
+                console.log("⚠️ Nenhum usuário encontrado com esse referralCode:", referralCode);
                 return res.status(400).json({ message: "Código de referral inválido." });
             }
         }
@@ -202,7 +209,7 @@ app.post('/api/register', async (req, res) => {
             referredById
         ]);
 
-        console.log(`✅ Utilizador registado: ${username} | ID: ${userId} | ReferredBy: ${referredById}`);
+        console.log(`✅ Utilizador registado: ${username} | NovoID: ${userId} | user_id_code: ${userIdCode} | ReferredBy: ${referredById}`);
         res.status(201).json({
             message: 'Cadastro realizado com sucesso!',
             userId: userId,
@@ -1400,6 +1407,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
 
