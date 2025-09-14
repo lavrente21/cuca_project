@@ -119,13 +119,14 @@ function authenticateToken(req, res, next) {
     });
 }
 
+// A sua nova solução: Verifica se o valor é a string "verdadeiro"
 const adminOnly = (req, res, next) => {
-    // Usa a conversão para booleano para garantir que o valor é tratado corretamente
-    const isAdmin = !!(req.user && req.user.isAdmin);
-    console.log("Verificando permissões de admin. É Admin?", isAdmin);
-    if (isAdmin) {
+    console.log("Verificando permissões de admin. req.user:", req.user);
+    if (req.user && req.user.isAdmin === 'verdadeiro') {
+        console.log("Utilizador é administrador. Acesso concedido.");
         next();
     } else {
+        console.log("Utilizador não é administrador. Acesso negado.");
         res.status(403).json({ message: 'Acesso negado: Admin apenas.' });
     }
 };
@@ -1260,6 +1261,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
 
