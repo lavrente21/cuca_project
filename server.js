@@ -94,36 +94,32 @@ async function generateUserIdCode() {
     return code;
 }
 
-// Middleware para autenticação de tokens
-// Middleware para autenticação de tokens
-// Middleware para autenticação de tokens
-// Linha 109 do server.js
+
+// Middleware de autenticação
 function authenticateToken(req, res, next) {
     const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1]; // Aqui o token é extraído
-    
-    // Verifique se o token existe antes de tentar a verificação
-    if (token == null) {
+    const token = authHeader && authHeader.split(' ')[1];
+
+    if (!token) {
         return res.status(401).send("ERRO DE AUTENTICAÇÃO: Token não fornecido.");
     }
-    
+
     jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
         if (err) {
             console.error("ERRO DE AUTENTICAÇÃO:", err.name, err.message);
             return res.status(403).send("ERRO DE AUTENTICAÇÃO: Token inválido.");
         }
-     
-         console.log("Token verificado! Payload (req.user):", user); // <-- ADICIONE ESTA LINHA
+
+        console.log("Token verificado! Payload (req.user):", user);
         req.user = user;
         next();
     });
 }
+
+// ✅ Defina só uma vez
 const authenticateAdmin = async (req, res, next) => {
     try {
-        const result = await pool.query(
-            "SELECT is_admin FROM users WHERE id = $1",
-            [req.user.id]
-        );
+        const result = await pool.query("SELECT is_admin FROM users WHERE id = $1", [req.user.id]);
         if (!result.rows[0] || !result.rows[0].is_admin) {
             return res.status(403).json({ message: 'Acesso negado: Admin apenas.' });
         }
@@ -133,11 +129,6 @@ const authenticateAdmin = async (req, res, next) => {
         res.status(500).json({ message: 'Erro interno ao verificar admin.' });
     }
 };
-
-
-
-
-
 
 // ==============================================================================
 // ROTAS DO BACKEND (ENDPOINTS DA API)
@@ -1258,6 +1249,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
 
