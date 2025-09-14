@@ -1398,7 +1398,7 @@ app.get('/api/referrals', authenticateToken, async (req, res) => {
 // /api/team/stats
 app.get('/api/team/stats', authenticateToken, async (req, res) => {
     try {
-        const userId = req.user.id; // UUID do utilizador logado
+        const userId = req.userId; // ✅ aqui agora
 
         // ===== NÍVEL 1 =====
         const nivel1 = await pool.query(
@@ -1410,8 +1410,8 @@ app.get('/api/team/stats', authenticateToken, async (req, res) => {
         const nivel1Active = await pool.query(
             `SELECT DISTINCT u.id
              FROM users u
-             JOIN investments i ON i.user_id = u.id
-             WHERE u.referred_by = $1 AND i.status = 'active'`,
+             JOIN user_investments i ON i.user_id = u.id
+             WHERE u.referred_by = $1 AND i.status = 'ativo'`,
             [userId]
         );
 
@@ -1428,8 +1428,8 @@ app.get('/api/team/stats', authenticateToken, async (req, res) => {
             const nivel2Active = await pool.query(
                 `SELECT DISTINCT u.id
                  FROM users u
-                 JOIN investments i ON i.user_id = u.id
-                 WHERE u.referred_by = ANY($1::uuid[]) AND i.status = 'active'`,
+                 JOIN user_investments i ON i.user_id = u.id
+                 WHERE u.referred_by = ANY($1::uuid[]) AND i.status = 'ativo'`,
                 [nivel1Ids]
             );
             nivel2ActiveCount = nivel2Active.rowCount;
@@ -1448,8 +1448,8 @@ app.get('/api/team/stats', authenticateToken, async (req, res) => {
             const nivel3Active = await pool.query(
                 `SELECT DISTINCT u.id
                  FROM users u
-                 JOIN investments i ON i.user_id = u.id
-                 WHERE u.referred_by = ANY($1::uuid[]) AND i.status = 'active'`,
+                 JOIN user_investments i ON i.user_id = u.id
+                 WHERE u.referred_by = ANY($1::uuid[]) AND i.status = 'ativo'`,
                 [nivel2Ids]
             );
             nivel3ActiveCount = nivel3Active.rowCount;
@@ -1478,6 +1478,7 @@ app.get('/api/team/stats', authenticateToken, async (req, res) => {
 
 
 
+
 // ==============================================================================
 // INICIAR O SERVIDOR
 // ==============================================================================
@@ -1498,6 +1499,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
 
