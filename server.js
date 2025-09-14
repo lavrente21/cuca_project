@@ -92,12 +92,17 @@ async function generateUserIdCode() {
     let code;
     let rows;
     do {
-        code = String(Math.floor(10000 + Math.random() * 90000));
-        const res = await pool.query("SELECT COUNT(*) AS count FROM users WHERE user_id_code = $1", [code]);
+        // Gera número de 9 dígitos
+        code = String(Math.floor(100000000 + Math.random() * 900000000)); 
+        const res = await pool.query(
+            "SELECT COUNT(*) AS count FROM users WHERE user_id_code = $1",
+            [code]
+        );
         rows = res.rows;
     } while (parseInt(rows[0].count, 10) > 0);
     return code;
 }
+
 
 
 // Middleware de autenticação
@@ -1408,6 +1413,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
 
