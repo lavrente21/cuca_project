@@ -173,26 +173,27 @@ app.post('/api/register', async (req, res) => {
         }
 
         // Verifica se o referralCode é válido
-        // Verifica se o referralCode é válido
-let referredById = null;
-if (referralCode) {
-    console.log("📩 referralCode recebido do frontend:", referralCode);
+        let referredById = null;
+        if (referralCode) {
+            console.log("📩 referralCode recebido do frontend:", referralCode);
 
-    const refResult = await pool.query(
-        "SELECT id, username, user_id_code FROM users WHERE user_id_code = $1",
-        [referralCode]
-    );
+            const refResult = await pool.query(
+                `SELECT id, username, user_id_code 
+                 FROM users 
+                 WHERE user_id_code = $1 OR username = $1`,
+                [referralCode]
+            );
 
-    console.log("🔎 Resultado da busca no banco:", refResult.rows);
+            console.log("🔎 Resultado da busca no banco:", refResult.rows);
 
-    if (refResult.rows.length > 0) {
-        referredById = refResult.rows[0].id;
-        console.log(`✅ referralCode válido → Dono: ${refResult.rows[0].username} | ID: ${referredById}`);
-    } else {
-        console.log("⚠️ Nenhum usuário encontrado com esse referralCode:", referralCode);
-        return res.status(400).json({ message: "Código de referral inválido." });
-    }
-}
+            if (refResult.rows.length > 0) {
+                referredById = refResult.rows[0].id;
+                console.log(`✅ referralCode válido → Dono: ${refResult.rows[0].username} | ID: ${referredById}`);
+            } else {
+                console.log("⚠️ Nenhum usuário encontrado com esse referralCode:", referralCode);
+                return res.status(400).json({ message: "Código de referral inválido." });
+            }
+        }
 
         // Gera o código único do usuário
         const userIdCode = await generateUserIdCode();
@@ -1413,6 +1414,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
 
