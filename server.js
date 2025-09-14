@@ -28,6 +28,11 @@ if (!fs.existsSync(UPLOAD_FOLDER)) {
     fs.mkdirSync(UPLOAD_FOLDER);
 }
 
+function generateUserIdCode() {
+    // Gera um código curto aleatório (ex: X123)
+    return 'X' + Math.floor(100 + Math.random() * 900);
+}
+
 // ==============================================================================
 // MIDDLEWARE
 // ==============================================================================
@@ -147,16 +152,32 @@ app.post('/api/register', async (req, res) => {
         if (existing.rows.length > 0) {
             return res.status(409).json({ message: 'Nome de utilizador já existe.' });
         }
+     const { referralCode } = req.body;
+
+let referredById = null;
+if (referralCode) {
+    const refResult = await pool.query(
+        "SELECT id FROM users WHERE user_id_code = $1",
+        [referralCode]
+    );
+    if (refResult.rows.length > 0) {
+        referredById = refResult.rows[0].id;
+    } else {
+        return res.status(400).json({ message: "Código de referral inválido." });
+    }
+}
+
         const userId = uuidv4();
         const userIdCode = await generateUserIdCode();
         const passwordHash = await bcrypt.hash(password, 10);
         const transactionPasswordHash = await bcrypt.hash(transactionPassword, 10);
         const sql = `
-            INSERT INTO users
-            (id, username, password_hash, transaction_password_hash, balance, balance_recharge, balance_withdraw, user_id_code)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-        `;
-        await pool.query(sql, [userId, username, passwordHash, transactionPasswordHash, 0.0, 0.0, 0.0, userIdCode]);
+    INSERT INTO users
+    (id, username, password_hash, transaction_password_hash, balance, balance_recharge, balance_withdraw, user_id_code, referred_by)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+`;
+await pool.query(sql, [userId, username, passwordHash, transactionPasswordHash, 0.0, 0.0, 0.0, userIdCode, referredById]);
+
         console.log(`Utilizador registado: ${username} com ID: ${userId}`);
         res.status(201).json({ message: 'Cadastro realizado com sucesso!', userId: userId });
     } catch (err) {
@@ -280,6 +301,18 @@ app.post('/api/deposit', authenticateToken, upload.single('file'), async (req, r
             VALUES ($1, $2, $3, $4, $5, $6)
         `;
         await client.query(sqlDeposit, [depositId, req.userId, amount, 'Pendente', new Date(), filename]);
+// ==========================
+// DAR COMISSÃO AO INDICADOR
+// ==========================
+const userRes = await client.query("SELECT referred_by FROM users WHERE id = $1", [req.userId]);
+const referredById = userRes.rows[0]?.referred_by;
+
+if (referredById) {
+    const commission = amount * 0.10; // 10%
+    await client.query(
+        "UPDATE users SET balance_withdraw = balance_withdraw + $1 WHERE id = $2",
+        [commission, referredById]
+    )
         await client.query('COMMIT');
         console.log(`Depósito de Kz ${amount} registado para o utilizador ${req.userId}, aguardando aprovação do admin.`);
         res.status(200).json({
@@ -883,6 +916,20 @@ app.put('/api/admin/deposits/:id', authenticateToken, authenticateAdmin, async (
                 [amount, deposit.user_id]
             );
         }
+     // 🔥 Paga comissão de 10% para quem indicou
+const userRes = await pool.query("SELECT referred_by FROM users WHERE id = $1", [deposit.user_id]);
+const referredBy = userRes.rows[0].referred_by;
+
+if (referredBy) {
+    const commission = parseFloat(deposit.amount) * 0.10; // 10%
+    await pool.query(
+        `UPDATE users
+         SET balance = COALESCE(balance, 0) + $1
+         WHERE id = $2`,
+        [commission, referredBy]
+    );
+}
+
 
         res.json({ message: `Depósito ${status} com sucesso.` });
     } catch (err) {
@@ -1229,6 +1276,21 @@ cron.schedule('* * * * *', processDailyEarnings);
 
 
 
+app.get('/api/referrals', authenticateToken, async (req, res) => {
+    try {
+        const referrals = await pool.query(
+            `SELECT u.id, u.username, d.amount AS deposit_amount, d.status AS deposit_status
+             FROM users u
+             LEFT JOIN deposits d ON u.id = d.user_id
+             WHERE u.referred_by = $1`,
+            [req.userId]
+        );
+        res.json({ referrals: referrals.rows });
+    } catch (err) {
+        console.error('Erro ao buscar referrals:', err);
+        res.status(500).json({ error: 'Erro interno ao buscar referrals.' });
+    }
+});
 
 
 // ==============================================================================
@@ -1251,6 +1313,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
 
