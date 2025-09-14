@@ -636,14 +636,19 @@ app.get('/api/investments/active', authenticateToken, async (req, res) => {
 app.get('/api/packages', async (req, res) => {
     try {
         const result = await pool.query(
-            "SELECT id, name, description, min_investment, max_investment, daily_return_rate, duration_days, status FROM investment_packages WHERE status = 'Ativo' ORDER BY created_at DESC"
+            "SELECT id, name, description, min_investment, max_investment, daily_return_rate, duration_days, status, type FROM investment_packages WHERE status = 'Ativo' ORDER BY created_at DESC"
         );
-        res.status(200).json({ packages: result.rows });
+
+        const curto = result.rows.filter(p => p.type === 'curto');
+        const longo = result.rows.filter(p => p.type === 'longo');
+
+        res.status(200).json({ curto, longo });
     } catch (err) {
-        console.error("Erro ao listar pacotes (frontend):", err);
+        console.error("Erro ao listar pacotes:", err);
         res.status(500).json({ error: "Erro ao listar pacotes" });
     }
 });
+
 
 // -------------------- HISTÓRICOS --------------------
 
@@ -1130,15 +1135,15 @@ app.put('/api/admin/withdrawals/:id', authenticateToken, authenticateAdmin, asyn
 
 // Criar novo pacote
 app.post('/api/admin/packages', authenticateToken, authenticateAdmin, async (req, res) => {
-    const { name, description, min_investment, max_investment, daily_return_rate, duration_days, status } = req.body;
+    const { name, description, min_investment, max_investment, daily_return_rate, duration_days, status, type } = req.body;
 
     try {
         const result = await pool.query(
-            `INSERT INTO investment_packages 
-            (id, name, description, min_investment, max_investment, daily_return_rate, duration_days, status, created_at) 
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW()) RETURNING *`,
-            [uuidv4(), name, description, min_investment, max_investment, daily_return_rate, duration_days, status]
-        );
+    `INSERT INTO investment_packages 
+    (id, name, description, min_investment, max_investment, daily_return_rate, duration_days, status, type, created_at) 
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW()) RETURNING *`,
+    [uuidv4(), name, description, min_investment, max_investment, daily_return_rate, duration_days, status, type || 'curto']
+);
         res.json(result.rows[0]);
     } catch (err) {
         console.error('Erro ao adicionar pacote:', err.message);
@@ -1154,12 +1159,12 @@ app.put('/api/admin/packages/:id', authenticateToken, authenticateAdmin, async (
         const { name, min_investment, max_investment, daily_return_rate, duration_days, status, description } = req.body;
 
         const result = await pool.query(
-            `UPDATE investment_packages 
-             SET name=$1, min_investment=$2, max_investment=$3, 
-                 daily_return_rate=$4, duration_days=$5, status=$6, description=$7
-             WHERE id=$8`,
-            [name, min_investment, max_investment, daily_return_rate, duration_days, status, description, id]
-        );
+    `UPDATE investment_packages
+     SET name=$1, min_investment=$2, max_investment=$3, 
+         daily_return_rate=$4, duration_days=$5, status=$6, description=$7, type=$8
+     WHERE id=$9`,
+    [name, min_investment, max_investment, daily_return_rate, duration_days, status, description, type || 'curto', id]
+);
 
         if (result.rowCount === 0) return res.status(404).json({ message: 'Pacote não encontrado.' });
         res.json({ message: 'Pacote atualizado com sucesso.' });
@@ -1499,6 +1504,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
 
