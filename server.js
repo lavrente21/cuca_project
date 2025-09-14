@@ -112,7 +112,8 @@ function authenticateToken(req, res, next) {
             console.error("ERRO DE AUTENTICAÇÃO:", err.name, err.message);
             return res.status(403).send("ERRO DE AUTENTICAÇÃO: Token inválido.");
         }
-        
+     
+         console.log("Token verificado! Payload (req.user):", user); // <-- ADICIONE ESTA LINHA
         req.user = user;
         next();
     });
@@ -1253,6 +1254,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
 
