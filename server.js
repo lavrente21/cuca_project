@@ -112,6 +112,8 @@ function authenticateToken(req, res, next) {
 
         console.log("Token verificado! Payload (req.user):", user);
         req.user = user;
+         req.userId = user.id;  // <-- adiciona isto
+
         next();
     });
 }
@@ -1249,6 +1251,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
 
