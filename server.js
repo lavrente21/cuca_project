@@ -279,6 +279,7 @@ app.post('/api/deposit', authenticateToken, upload.single('file'), async (req, r
     const { amount: amountStr } = req.body;
     const file = req.file;
     let client;
+
     if (!amountStr) {
         return res.status(400).json({ error: 'Valor do depósito é obrigatório.' });
     }
@@ -289,45 +290,60 @@ app.post('/api/deposit', authenticateToken, upload.single('file'), async (req, r
     if (!file) {
         return res.status(400).json({ error: 'Comprovativo de pagamento é obrigatório.' });
     }
+
     const filename = `${req.userId}_${Date.now()}_${file.originalname}`;
     const filepath = path.join(UPLOAD_FOLDER, filename);
+
     try {
+        // Move o arquivo enviado para a pasta de uploads
         await fs.promises.rename(file.path, filepath);
+
+        // Inicia transação
         client = await pool.connect();
         await client.query('BEGIN');
+
+        // Salva depósito como "Pendente"
         const depositId = uuidv4();
         const sqlDeposit = `
             INSERT INTO deposits (id, user_id, amount, status, timestamp, receipt_filename)
             VALUES ($1, $2, $3, $4, $5, $6)
         `;
         await client.query(sqlDeposit, [depositId, req.userId, amount, 'Pendente', new Date(), filename]);
-// ==========================
-// DAR COMISSÃO AO INDICADOR
-// ==========================
-const userRes = await client.query("SELECT referred_by FROM users WHERE id = $1", [req.userId]);
-const referredById = userRes.rows[0]?.referred_by;
 
-if (referredById) {
-    const commission = amount * 0.10; // 10%
-    await client.query(
-        "UPDATE users SET balance_withdraw = balance_withdraw + $1 WHERE id = $2",
-        [commission, referredById]
-    )
+        // Dar comissão ao indicador (referral)
+        const userRes = await client.query("SELECT referred_by FROM users WHERE id = $1", [req.userId]);
+        const referredById = userRes.rows[0]?.referred_by;
+
+        if (referredById) {
+            const commission = amount * 0.10; // 10%
+            await client.query(
+                "UPDATE users SET balance_withdraw = balance_withdraw + $1 WHERE id = $2",
+                [commission, referredById]
+            );
+        }
+
+        // Confirma transação
         await client.query('COMMIT');
+
         console.log(`Depósito de Kz ${amount} registado para o utilizador ${req.userId}, aguardando aprovação do admin.`);
         res.status(200).json({
             message: 'Depósito enviado para análise do administrador. O saldo será atualizado após aprovação.'
         });
     } catch (err) {
+        // Rollback em caso de erro
         if (client) {
-            try { await client.query('ROLLBACK'); } catch (e) { /* ignore */ }
+            try { await client.query('ROLLBACK'); } catch (e) { /* ignora */ }
         }
         console.error('Erro no depósito:', err);
-        res.status(500).json({ error: 'Erro interno do servidor ao processar depósito.', message: err.message });
+        res.status(500).json({
+            error: 'Erro interno do servidor ao processar depósito.',
+            message: err.message
+        });
     } finally {
         if (client) client.release();
     }
 });
+
 
 // -------------------- INVESTIR EM PACOTE --------------------
 // -------------------- INVESTIR EM PACOTE --------------------
@@ -1339,6 +1355,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
 
 
 
