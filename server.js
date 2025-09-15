@@ -485,13 +485,20 @@ app.post('/api/invest', authenticateToken, async (req, res) => {
         await client.query('COMMIT');
         res.status(200).json({ message: 'Investimento criado com sucesso!', investmentId });
 
-    } catch (err) {
-        try { await client.query('ROLLBACK'); } catch (e) { /* ignore */ }
-        console.error('Erro ao criar investimento:', err);
-        res.status(500).json({ message: 'Erro ao criar investimento.', error: err.message });
-    } finally {
-        client.release();
+   } catch (err) {
+    try { await client.query('ROLLBACK'); } catch (e) { /* ignore */ }
+    console.error('Erro ao criar investimento:', err);
+
+    if (!res.headersSent) {
+        res.status(400).json({
+            success: false,
+            message: err.message || 'Erro ao criar investimento.'
+        });
     }
+} finally {
+    client.release();
+}
+
 });
 
 // Rota de Levantamento (Withdraw)
