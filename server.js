@@ -16,6 +16,7 @@ const cron = require("node-cron");
 const PORT = process.env.PORT || 5000;
 
 
+
 // ==============================================================================
 // CONFIGURAÇÃO INICIAL
 // ==============================================================================
@@ -41,7 +42,7 @@ function generateUserIdCode() {
 // ==============================================================================
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/uploads', express.static(UPLOAD_FOLDER));
 app.use(express.static(path.join(FRONTEND_DIR, 'public'))); // Adicione esta linha se tiver uma pasta 'public'
 
 // Configuração CORS
@@ -1279,18 +1280,25 @@ app.get('/api/admin/packages', authenticateToken, authenticateAdmin, async (req,
 app.get('/api/blog/posts', async (req, res) => {
     try {
         const result = await pool.query(
-            `SELECT bp.id, bp.title, bp.content, bp.image_url, bp.published_at, u.username AS author
+            `SELECT bp.id, bp.title, bp.content, bp.image_urls, bp.published_at, u.username AS author
              FROM blog_posts bp
              JOIN users u ON u.id = bp.author_id
              WHERE bp.is_approved = true
              ORDER BY bp.published_at DESC`
         );
-        res.json({ posts: result.rows });
+
+        const posts = result.rows.map(post => ({
+            ...post,
+            image_urls: post.image_urls ? JSON.parse(post.image_urls) : []
+        }));
+
+        res.json({ posts }); // ✅ envia apenas aqui
     } catch (err) {
         console.error('Erro ao listar posts aprovados:', err);
         res.status(500).json({ message: 'Erro interno ao listar posts.', error: err.message });
     }
 });
+
 
 
 // Aceita até 2 arquivos com name="imgs"
