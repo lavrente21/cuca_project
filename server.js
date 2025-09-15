@@ -456,6 +456,9 @@ app.post('/api/invest', authenticateToken, async (req, res) => {
             }
 
             // precisa ter o mesmo pacote longo ativo
+            // remove "(VIP)" ou "VIP" do final do nome para comparar
+            const baseName = pkg.name.replace(/\s*\(?vip\)?\s*$/i, '').trim();
+
             const hasLong = await client.query(
                 `SELECT ui.id
                  FROM user_investments ui
@@ -464,10 +467,10 @@ app.post('/api/invest', authenticateToken, async (req, res) => {
                    AND ip.name = $2
                    AND ip.type = 'longo'
                    AND ui.status = 'ativo'`,
-                [req.userId, pkg.name]
+                [req.userId, baseName]
             );
             if (hasLong.rows.length === 0) {
-                throw new Error(`Para adquirir o pacote ${pkg.name} (curto), você precisa ter ativo o pacote ${pkg.name} (longo).`);
+                throw new Error(`Para adquirir o pacote ${pkg.name} (curto), você precisa ter ativo o pacote ${baseName} (longo).`);
             }
         }
 
