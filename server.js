@@ -79,11 +79,11 @@ const upload = multer({
     dest: UPLOAD_FOLDER,
     limits: { fileSize: 16 * 1024 * 1024 }, // 16 MB
     fileFilter: (req, file, cb) => {
-        const allowedTypes = ['image/png', 'image/jpg', 'image/jpeg', 'application/pdf'];
+        const allowedTypes = ['image/png', 'image/jpg', 'image/jpeg'];
         if (allowedTypes.includes(file.mimetype)) {
             cb(null, true);
         } else {
-            cb(new Error('Tipo de ficheiro não permitido. Apenas PNG, JPG, JPEG, PDF.'));
+            cb(new Error('Tipo de arquivo não permitido. Apenas PNG, JPG, JPEG.'));
         }
     }
 });
@@ -1281,10 +1281,13 @@ app.get('/api/blog/posts', async (req, res) => {
 });
 
 
-app.post('/api/blog/posts', authenticateToken, upload.single("img"), async (req, res) => {
+// Aceita até 2 arquivos com name="imgs"
+app.post('/api/blog/posts', authenticateToken, upload.array("imgs", 2), async (req, res) => {
     let { content } = req.body;
     const title = "SAQUE"; 
-    const image_url = req.file ? `/uploads/${req.file.filename}` : null; // caminho acessível da imagem
+
+    // Mapear todos os arquivos enviados
+    const image_urls = req.files ? req.files.map(file => `/uploads/${file.filename}`) : [];
 
     if (!content) content = null;
 
@@ -1306,7 +1309,7 @@ app.post('/api/blog/posts', authenticateToken, upload.single("img"), async (req,
         await pool.query(
             `INSERT INTO blog_posts (id, author_id, title, content, image_url, is_approved, published_at)
              VALUES ($1, $2, $3, $4, $5, false, NOW())`,
-            [postId, req.userId, title, content, image_url]
+            [postId, req.userId, title, content, image_urls.join(',' /* ou JSON.stringify(image_urls) */)]
         );
 
         // decrementa limite
@@ -1321,6 +1324,7 @@ app.post('/api/blog/posts', authenticateToken, upload.single("img"), async (req,
         res.status(500).json({ message: 'Erro interno ao criar post.', error: err.message });
     }
 });
+
 
 
 app.put('/api/admin/blog/posts/:id', authenticateToken, authenticateAdmin, async (req, res) => {
