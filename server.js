@@ -423,7 +423,7 @@ app.post('/api/invest', authenticateToken, async (req, res) => {
 
         // 1) Buscar pacote
         const pkgRes = await client.query(
-            "SELECT daily_return_rate, duration_days, min_investment, max_investment, status FROM investment_packages WHERE id = $1",
+            "SELECT id, name, type, daily_return_rate, duration_days, min_investment, max_investment, status FROM investment_packages WHERE id = $1",
             [packageId]
         );
         if (pkgRes.rows.length === 0) throw new Error("Pacote não encontrado.");
@@ -441,19 +441,42 @@ app.post('/api/invest', authenticateToken, async (req, res) => {
         if (!user) throw new Error("Usuário não encontrado.");
         if (parseFloat(user.balance_recharge) < amount) throw new Error("Saldo de recarga insuficiente.");
 
-        // 4) Calcula ganho diário
+        // 4) Regras especiais
+        if (pkg.type === "curto") {
+            // já comprou esse curto antes?
+            const alreadyBought = await client.query(
+                "SELECT id FROM user_investments WHERE user_id = $1 AND package_id = $2",
+                [req.userId, pkg.id]
+            );
+            if (alreadyBought.rows.length > 0) {
+                throw new Error(`Você só pode comprar o pacote ${pkg.name} (curto) uma única vez.`);
+            }
+
+            // precisa ter o mesmo pacote longo ativo
+            const hasLong = await client.query(
+                "SELECT id FROM user_investments WHERE user_id = $1 AND package_name = $2 AND status = 'ativo'",
+                [req.userId, pkg.name] // mesmo nome, mas tipo = longo
+            );
+            if (hasLong.rows.length === 0) {
+                throw new Error(`Para adquirir o pacote ${pkg.name} (curto), você precisa ter ativo o pacote ${pkg.name} (longo).`);
+            }
+        }
+
+        // (se for longo, pode comprar sempre, sem restrições)
+
+        // 5) Calcula ganho diário
         const dailyEarning = parseFloat((amount * (parseFloat(pkg.daily_return_rate) / 100)).toFixed(2));
 
-        // 5) Inserir investimento
+        // 6) Inserir investimento
         const investmentId = uuidv4();
         await client.query(
             `INSERT INTO user_investments
-             (id, user_id, package_id, amount, daily_earning, days_remaining, status, created_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
-            [investmentId, req.userId, packageId, amount, dailyEarning, pkg.duration_days, 'ativo']
+             (id, user_id, package_id, package_name, amount, daily_earning, days_remaining, status, created_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())`,
+            [investmentId, req.userId, packageId, pkg.name, amount, dailyEarning, pkg.duration_days, 'ativo']
         );
 
-        // 6) Desconta apenas do balance_recharge (evita desconto duplicado)
+        // 7) Desconta apenas do balance_recharge
         await client.query(
             "UPDATE users SET balance_recharge = balance_recharge - $1 WHERE id = $2",
             [amount, req.userId]
@@ -461,6 +484,7 @@ app.post('/api/invest', authenticateToken, async (req, res) => {
 
         await client.query('COMMIT');
         res.status(200).json({ message: 'Investimento criado com sucesso!', investmentId });
+
     } catch (err) {
         try { await client.query('ROLLBACK'); } catch (e) { /* ignore */ }
         console.error('Erro ao criar investimento:', err);
@@ -1504,35 +1528,3 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
