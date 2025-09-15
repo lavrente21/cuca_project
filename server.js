@@ -436,7 +436,10 @@ app.post('/api/invest', authenticateToken, async (req, res) => {
         }
 
         // 3) Verifica saldo_recharge do usuário
-        const userRes = await client.query("SELECT balance_recharge FROM users WHERE id = $1 FOR UPDATE", [req.userId]);
+        const userRes = await client.query(
+            "SELECT balance_recharge FROM users WHERE id = $1 FOR UPDATE",
+            [req.userId]
+        );
         const user = userRes.rows[0];
         if (!user) throw new Error("Usuário não encontrado.");
         if (parseFloat(user.balance_recharge) < amount) throw new Error("Saldo de recarga insuficiente.");
@@ -454,8 +457,14 @@ app.post('/api/invest', authenticateToken, async (req, res) => {
 
             // precisa ter o mesmo pacote longo ativo
             const hasLong = await client.query(
-                "SELECT id FROM user_investments WHERE user_id = $1 AND package_name = $2 AND status = 'ativo'",
-                [req.userId, pkg.name] // mesmo nome, mas tipo = longo
+                `SELECT ui.id
+                 FROM user_investments ui
+                 JOIN investment_packages ip ON ui.package_id = ip.id
+                 WHERE ui.user_id = $1
+                   AND ip.name = $2
+                   AND ip.type = 'longo'
+                   AND ui.status = 'ativo'`,
+                [req.userId, pkg.name]
             );
             if (hasLong.rows.length === 0) {
                 throw new Error(`Para adquirir o pacote ${pkg.name} (curto), você precisa ter ativo o pacote ${pkg.name} (longo).`);
@@ -485,21 +494,21 @@ app.post('/api/invest', authenticateToken, async (req, res) => {
         await client.query('COMMIT');
         res.status(200).json({ message: 'Investimento criado com sucesso!', investmentId });
 
-   } catch (err) {
-    try { await client.query('ROLLBACK'); } catch (e) { /* ignore */ }
-    console.error('Erro ao criar investimento:', err);
+    } catch (err) {
+        try { await client.query('ROLLBACK'); } catch (e) { /* ignore */ }
+        console.error('Erro ao criar investimento:', err);
 
-    if (!res.headersSent) {
-        res.status(400).json({
-            success: false,
-            message: err.message || 'Erro ao criar investimento.'
-        });
+        if (!res.headersSent) {
+            res.status(400).json({
+                success: false,
+                message: err.message || 'Erro ao criar investimento.'
+            });
+        }
+    } finally {
+        client.release();
     }
-} finally {
-    client.release();
-}
-
 });
+
 
 // Rota de Levantamento (Withdraw)
 // Rota de Levantamento (Withdraw)
