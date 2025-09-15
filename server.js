@@ -511,9 +511,8 @@ app.post('/api/invest', authenticateToken, async (req, res) => {
 
 // Rota para listar pacotes ativos do usuário
 app.get('/api/user/active-packages', authenticateToken, async (req, res) => {
-    const client = await pool.connect();
     try {
-        const result = await client.query(
+        const result = await pool.query(
             `SELECT ui.id, ui.package_id, ui.package_name, ip.type, ui.status, ui.amount, ui.days_remaining
              FROM user_investments ui
              JOIN investment_packages ip ON ui.package_id = ip.id
@@ -524,8 +523,6 @@ app.get('/api/user/active-packages', authenticateToken, async (req, res) => {
     } catch (err) {
         console.error("Erro ao buscar pacotes ativos:", err);
         res.status(500).json({ message: "Erro ao buscar pacotes ativos." });
-    } finally {
-        client.release();
     }
 });
 
