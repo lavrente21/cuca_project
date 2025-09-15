@@ -41,7 +41,7 @@ function generateUserIdCode() {
 // ==============================================================================
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use('/uploads', express.static(UPLOAD_FOLDER));
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use(express.static(path.join(FRONTEND_DIR, 'public'))); // Adicione esta linha se tiver uma pasta 'public'
 
 // Configuração CORS
@@ -1384,7 +1384,7 @@ async function processDailyEarnings() {
                 (last_credited_at IS NULL AND created_at <= NOW() - INTERVAL '24 hours')
                 OR (last_credited_at IS NOT NULL AND last_credited_at <= NOW() - INTERVAL '24 hours')
             );
-        `;
+        `
         const investmentsResult = await client.query(activeInvestmentsQuery);
         const activeInvestments = investmentsResult.rows;
 
