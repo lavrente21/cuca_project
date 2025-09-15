@@ -1284,9 +1284,9 @@ app.get('/api/blog/posts', async (req, res) => {
 // Aceita até 2 arquivos com name="imgs"
 app.post('/api/blog/posts', authenticateToken, upload.array("imgs", 2), async (req, res) => {
     let { content } = req.body;
-    const title = "SAQUE"; 
+    const title = "SAQUE";
 
-    // Mapear todos os arquivos enviados
+    // Array de URLs das imagens
     const image_urls = req.files ? req.files.map(file => `/uploads/${file.filename}`) : [];
 
     if (!content) content = null;
@@ -1307,9 +1307,9 @@ app.post('/api/blog/posts', authenticateToken, upload.array("imgs", 2), async (r
         // criar post
         const postId = uuidv4();
         await pool.query(
-            `INSERT INTO blog_posts (id, author_id, title, content, image_url, is_approved, published_at)
+            `INSERT INTO blog_posts (id, author_id, title, content, image_urls, is_approved, published_at)
              VALUES ($1, $2, $3, $4, $5, false, NOW())`,
-            [postId, req.userId, title, content, image_urls.join(',' /* ou JSON.stringify(image_urls) */)]
+            [postId, req.userId, title, content, JSON.stringify(image_urls)]
         );
 
         // decrementa limite
@@ -1324,6 +1324,7 @@ app.post('/api/blog/posts', authenticateToken, upload.array("imgs", 2), async (r
         res.status(500).json({ message: 'Erro interno ao criar post.', error: err.message });
     }
 });
+
 
 
 
