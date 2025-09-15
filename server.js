@@ -75,8 +75,20 @@ const pool = new Pool({
 // ==============================================================================
 // CONFIGURAÇÃO DE UPLOAD DE FICHEIROS (MULTER)
 // ==============================================================================
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        cb(null, UPLOAD_FOLDER); // pasta 'uploads'
+    },
+    filename: (req, file, cb) => {
+        // Mantém a extensão original e cria nome único
+        const ext = path.extname(file.originalname);
+        const uniqueName = Date.now() + '-' + Math.round(Math.random() * 1E9) + ext;
+        cb(null, uniqueName);
+    }
+});
+
 const upload = multer({
-    dest: UPLOAD_FOLDER,
+    storage: storage,
     limits: { fileSize: 16 * 1024 * 1024 }, // 16 MB
     fileFilter: (req, file, cb) => {
         const allowedTypes = ['image/png', 'image/jpg', 'image/jpeg'];
