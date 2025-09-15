@@ -1356,81 +1356,67 @@ app.get('/api/admin/blog/posts', authenticateToken, authenticateAdmin, async (re
 // -------------------- JOB DE CRÉDITO DIÁRIO --------------------
 // Função para processar e creditar ganhos diários nos investimentos ativos
 // Função para processar e creditar ganhos diários nos investimentos ativos
+// -------------------- JOB DE CRÉDITO DIÁRIO --------------------
 async function processDailyEarnings() {
     let client;
     try {
         client = await pool.connect();
         await client.query('BEGIN');
 
-        // Seleciona investimentos que estão ativos e que não foram creditados nas últimas 24 horas.
+        // Busca apenas investimentos que estão ativos e passaram 24h do último crédito (ou da criação)
         const activeInvestmentsQuery = `
             SELECT id, user_id, amount, daily_earning, days_remaining, created_at, last_credited_at
             FROM user_investments
             WHERE status = 'ativo'
-            AND (last_credited_at IS NULL OR last_credited_at <= NOW() - INTERVAL '24 hours');
+            AND (
+                (last_credited_at IS NULL AND created_at <= NOW() - INTERVAL '24 hours')
+                OR (last_credited_at IS NOT NULL AND last_credited_at <= NOW() - INTERVAL '24 hours')
+            );
         `;
         const investmentsResult = await client.query(activeInvestmentsQuery);
         const activeInvestments = investmentsResult.rows;
 
         for (const inv of activeInvestments) {
-            // Verifica se a duração total já passou
-            const investmentDurationInMs = inv.days_remaining * 24 * 60 * 60 * 1000;
-            const now = new Date();
-            const timeSinceStartInMs = now.getTime() - inv.created_at.getTime();
+            // Credita o ganho diário ao usuário
+            await client.query(`
+                UPDATE users
+                SET balance = balance + $1,
+                    balance_withdraw = balance_withdraw + $1
+                WHERE id = $2;
+            `, [inv.daily_earning, inv.user_id]);
 
-            // Evita creditar se o investimento já se encerrou
-            if (timeSinceStartInMs < investmentDurationInMs) {
+            // Registra o ganho no histórico
+            const earningId = uuidv4();
+            await client.query(`
+                INSERT INTO investment_earnings (id, investment_id, amount, paid_at)
+                VALUES ($1, $2, $3, NOW());
+            `, [earningId, inv.id, inv.daily_earning]);
 
-                // Lógica para creditar o ganho diário
-                const creditEarningQuery = `
-                    UPDATE users
-                    SET balance = balance + $1, balance_withdraw = balance_withdraw + $1
-                    WHERE id = $2;
-                `;
-                await client.query(creditEarningQuery, [inv.daily_earning, inv.user_id]);
+            // Atualiza dias restantes, último crédito e status
+            await client.query(`
+                UPDATE user_investments
+                SET days_remaining = days_remaining - 1,
+                    last_credited_at = NOW(),
+                    status = CASE WHEN days_remaining - 1 <= 0 THEN 'concluido' ELSE status END
+                WHERE id = $1;
+            `, [inv.id]);
 
-                // Lógica para registar o ganho
-             const insertEarningQuery = `
-    INSERT INTO investment_earnings (id, investment_id, amount, paid_at)
-    VALUES ($1, $2, $3, NOW())
-`;
-                const earningId = uuidv4();
-await client.query(insertEarningQuery, [earningId, inv.id, inv.daily_earning]);
-
-                // Lógica para atualizar a contagem de dias restantes e a data do último crédito
-                const updateInvestmentQuery = `
-                    UPDATE user_investments
-                    SET days_remaining = days_remaining - 1,
-                        last_credited_at = NOW(),
-                        status = CASE WHEN days_remaining - 1 <= 0 THEN 'concluido' ELSE status END
-                    WHERE id = $1;
-                `;
-                await client.query(updateInvestmentQuery, [inv.id]);
-
-                console.log(`💰 Crédito de Kz ${inv.daily_earning} para o utilizador ${inv.user_id}`);
-            } else {
-                // Atualiza o status para concluído se a duração expirou.
-                await client.query(
-                    `UPDATE user_investments SET status = 'concluido' WHERE id = $1`,
-                    [inv.id]
-                );
-            }
+            console.log(`💰 Crédito de Kz ${inv.daily_earning} para o usuário ${inv.user_id}`);
         }
 
         await client.query('COMMIT');
     } catch (err) {
-        await client.query('ROLLBACK');
-        console.error("Erro ao processar ganhos diários:", err);
+        if (client) await client.query('ROLLBACK');
+        console.error("❌ Erro ao processar ganhos diários:", err);
     } finally {
-        if (client) {
-            client.release();
-        }
+        if (client) client.release();
     }
 }
 
 // -------------------- CRON JOB --------------------
-// Agendamento para correr a cada minuto
+// executa a cada minuto (pode ajustar para cada hora ou a cada dia se preferir)
 cron.schedule('* * * * *', processDailyEarnings);
+
 
 
 
