@@ -69,9 +69,12 @@ const pool = new Pool({
     password: process.env.PGPASSWORD,
     database: process.env.PGDATABASE,
     port: process.env.PGPORT,
-    max: 25,
-    ssl: { rejectUnauthorized: false } // Render exige SSL
+    max: 70,  // realista para 256 MB de RAM
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 5000,
+    ssl: { rejectUnauthorized: false }
 });
+
 
 // ==============================================================================
 // CONFIGURAÇÃO DE UPLOAD DE FICHEIROS (MULTER)
@@ -127,22 +130,23 @@ function authenticateToken(req, res, next) {
     const token = authHeader && authHeader.split(' ')[1];
 
     if (!token) {
-        return res.status(401).send("ERRO DE AUTENTICAÇÃO: Token não fornecido.");
+        return res.status(401).json({ error: "Token não fornecido" }); // 🔥 sempre JSON
     }
 
     jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
         if (err) {
             console.error("ERRO DE AUTENTICAÇÃO:", err.name, err.message);
-            return res.status(403).send("ERRO DE AUTENTICAÇÃO: Token inválido.");
+            return res.status(403).json({ error: "Token inválido ou expirado" }); // 🔥 sempre JSON
         }
 
-        console.log("Token verificado! Payload (req.user):", user);
+        console.log("✅ Token verificado! Payload (req.user):", user);
         req.user = user;
-         req.userId = user.id;  // <-- adiciona isto
+        req.userId = user.id;
 
         next();
     });
 }
+
 
 // ✅ Defina só uma vez
 const authenticateAdmin = async (req, res, next) => {
@@ -462,7 +466,6 @@ app.post('/api/invest', authenticateToken, async (req, res) => {
 
         // 4) Regras especiais
         if (pkg.type === "curto") {
-            // já comprou esse curto antes?
             const alreadyBought = await client.query(
                 "SELECT id FROM user_investments WHERE user_id = $1 AND package_id = $2",
                 [req.userId, pkg.id]
@@ -471,10 +474,7 @@ app.post('/api/invest', authenticateToken, async (req, res) => {
                 throw new Error(`Você só pode comprar o pacote ${pkg.name} (curto) uma única vez.`);
             }
 
-            // precisa ter o mesmo pacote longo ativo
-            // remove "(VIP)" ou "VIP" do final do nome para comparar
             const baseName = pkg.name.replace(/\s*\(?vip\)?\s*$/i, '').trim();
-
             const hasLong = await client.query(
                 `SELECT ui.id
                  FROM user_investments ui
@@ -489,8 +489,6 @@ app.post('/api/invest', authenticateToken, async (req, res) => {
                 throw new Error(`Para adquirir o pacote ${pkg.name} (curto), você precisa ter ativo o pacote ${baseName} (longo).`);
             }
         }
-
-        // (se for longo, pode comprar sempre, sem restrições)
 
         // 5) Calcula ganho diário
         const dailyEarning = parseFloat((amount * (parseFloat(pkg.daily_return_rate) / 100)).toFixed(2));
@@ -510,13 +508,35 @@ app.post('/api/invest', authenticateToken, async (req, res) => {
             [amount, req.userId]
         );
 
+        // 8) Comissões de indicação
+        const refRes = await client.query("SELECT referred_by FROM users WHERE id = $1", [req.userId]);
+        const directRef = refRes.rows[0]?.referred_by;
+
+        if (directRef) {
+            const directCommission = amount * 0.25; // 25%
+            await client.query(
+                "UPDATE users SET balance_withdraw = COALESCE(balance_withdraw,0) + $1 WHERE id = $2",
+                [directCommission, directRef]
+            );
+
+            // Nível 2: quem indicou o usuário que indicou o investidor
+            const lvl2Res = await client.query("SELECT referred_by FROM users WHERE id = $1", [directRef]);
+            const lvl2Ref = lvl2Res.rows[0]?.referred_by;
+            if (lvl2Ref) {
+                const lvl2Commission = amount * 0.05; // 5%
+                await client.query(
+                    "UPDATE users SET balance_withdraw = COALESCE(balance_withdraw,0) + $1 WHERE id = $2",
+                    [lvl2Commission, lvl2Ref]
+                );
+            }
+        }
+
         await client.query('COMMIT');
         res.status(200).json({ message: 'Investimento criado com sucesso!', investmentId });
 
     } catch (err) {
         try { await client.query('ROLLBACK'); } catch (e) { /* ignore */ }
         console.error('Erro ao criar investimento:', err);
-
         if (!res.headersSent) {
             res.status(400).json({
                 success: false,
@@ -527,6 +547,7 @@ app.post('/api/invest', authenticateToken, async (req, res) => {
         client.release();
     }
 });
+
 
 // Rota para listar pacotes ativos do usuário
 app.get('/api/user/active-packages', authenticateToken, async (req, res) => {
@@ -1389,67 +1410,80 @@ app.get('/api/admin/blog/posts', authenticateToken, authenticateAdmin, async (re
 // Função para processar e creditar ganhos diários nos investimentos ativos
 // Função para processar e creditar ganhos diários nos investimentos ativos
 // -------------------- JOB DE CRÉDITO DIÁRIO --------------------
+const batchSize = 50; // processa 50 investimentos por vez
+
 async function processDailyEarnings() {
     let client;
     try {
-        client = await pool.connect();
-        await client.query('BEGIN');
-
-        // Busca apenas investimentos que estão ativos e passaram 24h do último crédito (ou da criação)
-        const activeInvestmentsQuery = `
+        const investmentsResult = await pool.query(`
             SELECT id, user_id, amount, daily_earning, days_remaining, created_at, last_credited_at
             FROM user_investments
             WHERE status = 'ativo'
             AND (
                 (last_credited_at IS NULL AND created_at <= NOW() - INTERVAL '24 hours')
                 OR (last_credited_at IS NOT NULL AND last_credited_at <= NOW() - INTERVAL '24 hours')
-            );
-        `
-        const investmentsResult = await client.query(activeInvestmentsQuery);
+            )
+        `);
+
         const activeInvestments = investmentsResult.rows;
+        console.log(`🔔 Encontrados ${activeInvestments.length} investimentos para crédito diário`);
 
-        for (const inv of activeInvestments) {
-            // Credita o ganho diário ao usuário
-            await client.query(`
-                UPDATE users
-                SET balance = balance + $1,
-                    balance_withdraw = balance_withdraw + $1
-                WHERE id = $2;
-            `, [inv.daily_earning, inv.user_id]);
+        for (let i = 0; i < activeInvestments.length; i += batchSize) {
+            const batch = activeInvestments.slice(i, i + batchSize);
+            client = await pool.connect();
+            try {
+                await client.query('BEGIN');
 
-            // Registra o ganho no histórico
-            const earningId = uuidv4();
-            await client.query(`
-                INSERT INTO investment_earnings (id, investment_id, amount, paid_at)
-                VALUES ($1, $2, $3, NOW());
-            `, [earningId, inv.id, inv.daily_earning]);
+                for (const inv of batch) {
+                    // Credita o ganho diário
+                    await client.query(`
+                        UPDATE users
+                        SET balance = balance + $1,
+                            balance_withdraw = balance_withdraw + $1
+                        WHERE id = $2
+                    `, [inv.daily_earning, inv.user_id]);
 
-            // Atualiza dias restantes, último crédito e status
-            await client.query(`
-                UPDATE user_investments
-                SET days_remaining = days_remaining - 1,
-                    last_credited_at = NOW(),
-                    status = CASE WHEN days_remaining - 1 <= 0 THEN 'concluido' ELSE status END
-                WHERE id = $1;
-            `, [inv.id]);
+                    // Registra o ganho no histórico
+                    const earningId = uuidv4();
+                    await client.query(`
+                        INSERT INTO investment_earnings (id, investment_id, amount, paid_at)
+                        VALUES ($1, $2, $3, NOW())
+                    `, [earningId, inv.id, inv.daily_earning]);
 
-            console.log(`💰 Crédito de Kz ${inv.daily_earning} para o usuário ${inv.user_id}`);
+                    // Atualiza dias restantes, último crédito e status
+                    await client.query(`
+                        UPDATE user_investments
+                        SET days_remaining = days_remaining - 1,
+                            last_credited_at = NOW(),
+                            status = CASE WHEN days_remaining - 1 <= 0 THEN 'concluido' ELSE status END
+                        WHERE id = $1
+                    `, [inv.id]);
+
+                    console.log(`💰 Crédito de Kz ${inv.daily_earning} para usuário ${inv.user_id}`);
+                }
+
+                await client.query('COMMIT');
+            } catch (err) {
+                await client.query('ROLLBACK');
+                console.error('❌ Erro no batch de crédito diário:', err);
+            } finally {
+                client.release();
+            }
         }
 
-        await client.query('COMMIT');
     } catch (err) {
-        if (client) await client.query('ROLLBACK');
-        console.error("❌ Erro ao processar ganhos diários:", err);
-    } finally {
-        if (client) client.release();
+        console.error('❌ Erro ao processar ganhos diários:', err);
     }
 }
 
+// -------------------- POOL ERRO --------------------
+pool.on('error', (err) => {
+    console.error('❌ Erro inesperado no pool de conexões:', err);
+});
+
 // -------------------- CRON JOB --------------------
-// executa a cada minuto (pode ajustar para cada hora ou a cada dia se preferir)
-cron.schedule('* * * * *', processDailyEarnings);
-
-
+// Executa todo dia à meia-noite (00:00)
+cron.schedule('0 0 * * *', processDailyEarnings);
 
 
 app.get('/api/referrals', authenticateToken, async (req, res) => {
@@ -1579,4 +1613,14 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`- Rotas admin disponíveis (usuários, depósitos, saques, pacotes, posts)`);
     console.log(`- Servindo ficheiros estáticos da pasta frontend/`);
 });
+
+// Monitorar memória e CPU a cada 30 segundos
+setInterval(() => {
+    const memoryUsage = process.memoryUsage();
+    const usedMB = (memoryUsage.rss / 1024 / 1024).toFixed(2); // RAM usada em MB
+    const heapUsedMB = (memoryUsage.heapUsed / 1024 / 1024).toFixed(2); // Heap do Node
+    const heapTotalMB = (memoryUsage.heapTotal / 1024 / 1024).toFixed(2);
+
+    console.log(`[MONITOR] RAM usada: ${usedMB} MB | Heap: ${heapUsedMB}/${heapTotalMB} MB`);
+}, 30000);
 
