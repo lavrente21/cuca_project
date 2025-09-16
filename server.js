@@ -1483,7 +1483,7 @@ pool.on('error', (err) => {
 
 // -------------------- CRON JOB --------------------
 // Executa todo dia à meia-noite (00:00)
-cron.schedule('0 0 * * *', processDailyEarnings);
+cron.schedule('* * * * *', processDailyEarnings);
 
 
 app.get('/api/referrals', authenticateToken, async (req, res) => {
@@ -1623,4 +1623,5 @@ setInterval(() => {
 
     console.log(`[MONITOR] RAM usada: ${usedMB} MB | Heap: ${heapUsedMB}/${heapTotalMB} MB`);
 }, 30000);
+
 
